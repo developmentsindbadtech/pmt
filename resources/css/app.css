@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* Login page: HRIS-style soft blue-grey background with subtle texture and faint shapes */
+.login-page-bg {
+    background-color: #e8ecf1;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(200, 210, 220, 0.4), transparent),
+        linear-gradient(180deg, #e8ecf1 0%, #dfe4ea 50%, #d8dee5 100%);
+}
+
+.login-page-bg::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 200' opacity='0.06'%3E%3Cpath fill='%234a5568' d='M0 200V80h40v120H0zm60 0V60h30v140H60zm50-140v140h25V60H110zm45 80v60h35v-60h-35zm40-80v200h30V0h-30zm50 120v80h40v-80h-40zm45-40v120h35V80h-35zm45 60v60h30v-60h-30z'/%3E%3C/svg%3E");
+    background-size: 420px 220px;
+    background-position: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+/* Task detail panel: smooth slide-in from right */
+@keyframes item-panel-in {
+    from {
+        opacity: 0;
+        transform: translateX(1rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.item-detail-panel {
+    animation: item-panel-in 0.2s ease-out;
+}
+
+/* Kanban board: fixed height to viewport, horizontal scroll only; per-column vertical scroll */
+.js-kanban-board {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(75 85 99) rgb(31 41 55);
+}
+.js-kanban-board::-webkit-scrollbar {
+    height: 10px;
+}
+.js-kanban-board::-webkit-scrollbar-track {
+    background: rgb(31 41 55);
+    border-radius: 4px;
+}
+.js-kanban-board::-webkit-scrollbar-thumb {
+    background: rgb(75 85 99);
+    border-radius: 4px;
+}
+.js-kanban-board::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+}
+
+/* List View: scrollable table with thin light gray vertical scrollbar, white space below */
+.js-list-view-table {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(209 213 219) rgb(249 250 251);
+}
+.js-list-view-table::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.js-list-view-table::-webkit-scrollbar-track {
+    background: rgb(249 250 251);
+    border-radius: 4px;
+}
+.js-list-view-table::-webkit-scrollbar-thumb {
+    background: rgb(209 213 219);
+    border-radius: 4px;
+}
+.js-list-view-table::-webkit-scrollbar-thumb:hover {
+    background: rgb(156 163 175);
+}
+
+/* Per-column vertical scrollbar (each column body) */
+.kanban-column-body {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(75 85 99) rgb(31 41 55);
+}
+.kanban-column-body::-webkit-scrollbar {
+    width: 10px;
+}
+.kanban-column-body::-webkit-scrollbar-track {
+    background: rgb(31 41 55);
+    border-radius: 4px;
+}
+.kanban-column-body::-webkit-scrollbar-thumb {
+    background: rgb(75 85 99);
+    border-radius: 4px;
+}
+.kanban-column-body::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+}
+
+/* Alpine.js x-cloak: hide elements until Alpine.js initializes */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Detail panel scrollbar styling */
+.item-detail-panel .overflow-y-auto::-webkit-scrollbar {
+    width: 8px;
+}
+.item-detail-panel .overflow-y-auto::-webkit-scrollbar-track {
+    background: rgb(243 244 246);
+    border-radius: 4px;
+}
+.item-detail-panel .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: rgb(156 163 175);
+    border-radius: 4px;
+}
+.item-detail-panel .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+}
