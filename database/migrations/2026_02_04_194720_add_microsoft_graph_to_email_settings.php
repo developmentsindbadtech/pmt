@@ -11,14 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Check if column already exists before adding it
-        // This migration is redundant if the table was created with send_from_email column
-        // but kept for backward compatibility with existing databases
-        if (!Schema::hasColumn('email_settings', 'send_from_email')) {
-            Schema::table('email_settings', function (Blueprint $table) {
-                $table->string('send_from_email')->nullable()->after('from_name');
-            });
-        }
+        Schema::table('email_settings', function (Blueprint $table) {
+            $table->string('send_from_email')->nullable()->after('from_name');
+        });
     }
 
     /**
