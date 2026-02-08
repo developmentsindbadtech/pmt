@@ -74,6 +74,9 @@ npm ci && npm run build
 # Run migrations
 php artisan migrate --force
 
+# Create storage symlink (required for serving uploaded files)
+php artisan storage:link
+
 # Clear and rebuild cache
 php artisan cache:clear
 php artisan config:cache
@@ -251,6 +254,35 @@ DB_PASSWORD=your_password
 - Check Memorystore Redis connection
 - Monitor cache hit rates
 - Ensure `CACHE_DRIVER=redis` is set
+
+### Issue: 404 Errors on Uploaded Images/Attachments
+**Symptoms:**
+- Images uploaded but return 404 when accessed
+- URL pattern: `/storage/item-attachments/{id}/{filename}`
+- Error: "404 Not Found" when accessing uploaded files
+
+**Solution:**
+```bash
+# Create the storage symlink (if missing)
+php artisan storage:link
+
+# Verify the symlink exists
+ls -la public/storage
+
+# Should show: public/storage -> ../storage/app/public
+
+# If symlink exists but files still 404, check permissions:
+chmod -R 775 storage/app/public
+chown -R www-data:www-data storage/app/public
+
+# Verify files exist in storage
+ls -la storage/app/public/item-attachments/
+```
+
+**Root Cause:**
+- Laravel stores files in `storage/app/public/` but serves them via `public/storage/`
+- The `storage:link` command creates a symlink: `public/storage -> storage/app/public`
+- Without this symlink, files cannot be accessed via web URLs
 
 ## Quick Deployment Checklist
 

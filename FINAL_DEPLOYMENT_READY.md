@@ -96,18 +96,21 @@ npm ci && npm run build
 # 3. Run migrations (if any new migrations)
 php artisan migrate --force
 
-# 4. Clear and cache
+# 4. Create storage symlink (CRITICAL: Required for serving uploaded images/attachments)
+php artisan storage:link
+
+# 5. Clear and cache
 php artisan cache:clear
 php artisan config:clear
 php artisan route:clear
 php artisan view:clear
 
-# 5. Rebuild cache (production mode)
+# 6. Rebuild cache (production mode)
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# 6. Set permissions (if using Compute Engine)
+# 7. Set permissions (if using Compute Engine)
 chmod -R 775 storage bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache
 

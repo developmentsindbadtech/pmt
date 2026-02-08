@@ -55,26 +55,31 @@
                     :class="expanded ? 'w-56' : 'w-14'"
                     style="padding-top: 0;"
                 >
-                    <div class="flex flex-1 flex-col overflow-y-auto py-3">
-                        <a href="{{ route('boards.index') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
-                            <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
-                            <span x-show="expanded" class="truncate text-sm font-medium">Boards</span>
-                        </a>
-                        @if(auth()->user()->is_admin)
-                        <a href="{{ route('user-management.index') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
-                            <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                            <span x-show="expanded" class="truncate text-sm">User Management</span>
-                        </a>
-                        <a href="{{ route('boards.create') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
-                            <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            <span x-show="expanded" class="truncate text-sm">New Board</span>
-                        </a>
-                        @endif
+                    <div class="flex flex-1 flex-col overflow-hidden py-3">
+                        <div class="shrink-0">
+                            <a href="{{ route('boards.index') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
+                                <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+                                <span x-show="expanded" class="truncate text-sm font-medium">Boards</span>
+                            </a>
+                            @if(auth()->user()->is_admin)
+                            <a href="{{ route('user-management.index') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
+                                <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                                <span x-show="expanded" class="truncate text-sm">User Management</span>
+                            </a>
+                            <a href="{{ route('boards.create') }}" class="flex items-center gap-3 px-3 py-2 text-gray-300 hover:bg-gray-700 hover:text-white" :class="!expanded && 'justify-center'">
+                                <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                <span x-show="expanded" class="truncate text-sm">New Board</span>
+                            </a>
+                            @endif
+                        </div>
                         @if (isset($sidebarBoards) && $sidebarBoards->isNotEmpty())
-                            <div class="mt-2 border-t border-gray-700 pt-2" x-show="expanded">
+                            <div class="mt-2 flex-1 overflow-y-auto border-t border-gray-700 pt-2" x-show="expanded">
                                 <p class="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-gray-500">Boards</p>
                                 @foreach ($sidebarBoards as $board)
-                                    <a href="{{ route('boards.show', $board) }}" class="flex items-center gap-3 px-3 py-1.5 text-sm {{ (isset($currentBoardId) && $currentBoardId === $board->id) ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}" :class="!expanded && 'justify-center'">
+                                    <a href="{{ route('boards.show', $board) }}" 
+                                       title="{{ $board->name }}" 
+                                       class="flex items-center gap-3 px-3 py-1.5 text-sm {{ (isset($currentBoardId) && $currentBoardId === $board->id) ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white' }}" 
+                                       :class="!expanded && 'justify-center'">
                                         <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                                         <span class="truncate" x-show="expanded">{{ $board->name }}</span>
                                     </a>
