@@ -25,6 +25,9 @@ class ItemController extends Controller
             'name' => 'required|string|max:255',
             'group_id' => 'nullable|exists:groups,id',
             'item_type' => 'nullable|in:task,bug',
+            'priority' => 'nullable|in:low,medium,high,critical',
+            'severity' => 'nullable|in:minor,major,critical,blocker',
+            'due_at' => 'nullable|date',
             'assignee_id' => 'nullable|exists:users,id',
         ]);
 
@@ -39,6 +42,9 @@ class ItemController extends Controller
             'number' => $nextNumber,
             'name' => $validated['name'],
             'item_type' => $validated['item_type'] ?? 'task',
+            'priority' => $validated['priority'] ?? 'medium',
+            'severity' => ($validated['item_type'] ?? 'task') === 'bug' ? ($validated['severity'] ?? 'major') : null,
+            'due_at' => $validated['due_at'] ?? null,
             'group_id' => $validated['group_id'] ?? $board->groups()->first()?->id,
             'position' => $maxPosition + 1,
             'created_by' => $request->user()->id,
@@ -94,6 +100,9 @@ class ItemController extends Controller
             'name' => 'sometimes|required|string|max:255',
             'group_id' => 'nullable|exists:groups,id',
             'item_type' => 'sometimes|in:task,bug',
+            'priority' => 'nullable|in:low,medium,high,critical',
+            'severity' => 'nullable|in:minor,major,critical,blocker',
+            'due_at' => 'nullable|date',
             'description' => 'nullable|string|max:10000',
             'repro_steps' => 'nullable|string|max:10000',
             'assignee_id' => 'nullable|exists:users,id',
@@ -105,13 +114,15 @@ class ItemController extends Controller
             if ($newType === 'bug') {
                 // Task → Bug: copy description into repro_steps (if not already provided)
                 $validated['repro_steps'] = $validated['repro_steps'] ?? $item->description;
+                $validated['severity'] = $validated['severity'] ?? 'major';
             } else {
                 // Bug → Task: copy repro_steps into description (if not already provided)
                 $validated['description'] = $validated['description'] ?? $item->repro_steps;
+                $validated['severity'] = null; // Clear severity for tasks
             }
         }
 
-        $allowed = ['name', 'group_id', 'item_type', 'description', 'repro_steps', 'assignee_id'];
+        $allowed = ['name', 'group_id', 'item_type', 'priority', 'severity', 'due_at', 'description', 'repro_steps', 'assignee_id'];
         $updates = array_intersect_key($validated, array_flip($allowed));
         if (! empty($updates)) {
             // Store old values before update for tracking changes
@@ -119,6 +130,9 @@ class ItemController extends Controller
                 'name' => $item->name,
                 'group_id' => $item->group_id,
                 'item_type' => $item->item_type,
+                'priority' => $item->priority,
+                'severity' => $item->severity,
+                'due_at' => $item->due_at?->format('Y-m-d'),
                 'description' => $item->description,
                 'repro_steps' => $item->repro_steps,
                 'assignee_id' => $item->assignee_id,
@@ -214,6 +228,46 @@ class ItemController extends Controller
                 if ($updates['assignee_id'] != null) {
                     $item->load('assignee');
                     $this->sendAssignmentNotification($item, $board, $user);
+                }
+            }
+
+            // Track priority changes
+            if (isset($updates['priority']) && ($oldValues['priority'] ?? 'medium') !== ($updates['priority'] ?? 'medium')) {
+                ItemActivity::create([
+                    'item_id' => $item->id,
+                    'user_id' => $user->id,
+                    'type' => 'updated',
+                    'field' => 'priority',
+                    'old_value' => $oldValues['priority'] ?? 'medium',
+                    'new_value' => $updates['priority'] ?? 'medium',
+                ]);
+            }
+
+            // Track severity changes
+            if (array_key_exists('severity', $updates) && ($oldValues['severity'] ?? null) !== ($updates['severity'] ?? null)) {
+                ItemActivity::create([
+                    'item_id' => $item->id,
+                    'user_id' => $user->id,
+                    'type' => 'updated',
+                    'field' => 'severity',
+                    'old_value' => $oldValues['severity'] ?? null,
+                    'new_value' => $updates['severity'] ?? null,
+                ]);
+            }
+
+            // Track due date changes
+            if (array_key_exists('due_at', $updates)) {
+                $oldDue = $oldValues['due_at'] ?? null;
+                $newDue = $updates['due_at'] ?? null;
+                if ($oldDue !== $newDue) {
+                    ItemActivity::create([
+                        'item_id' => $item->id,
+                        'user_id' => $user->id,
+                        'type' => 'updated',
+                        'field' => 'due_at',
+                        'old_value' => $oldDue,
+                        'new_value' => $newDue,
+                    ]);
                 }
             }
             

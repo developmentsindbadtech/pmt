@@ -13,10 +13,12 @@ class UserBoardFilter extends Model
         'assignee_id',
         'filter_unassigned',
         'item_type',
+        'filter_group_ids',
     ];
 
     protected $casts = [
         'filter_unassigned' => 'boolean',
+        'filter_group_ids' => 'array',
     ];
 
     public function user(): BelongsTo

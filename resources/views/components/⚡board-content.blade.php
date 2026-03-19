@@ -23,15 +23,19 @@ new class extends Component
     /** @var string|null Filter by type: 'task'|'bug'|null = All */
     public ?string $filterType = null;
 
+    /** @var array<int> Filter by status/group IDs — only show these columns (empty = all) */
+    public array $filterGroupIds = [];
+
     public string $activeTab = 'details';
 
-    public function mount(int $boardId, string $view = 'kanban', ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, ?int $selectedItemId = null): void
+    public function mount(int $boardId, string $view = 'kanban', ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = [], ?int $selectedItemId = null): void
     {
         $this->boardId = $boardId;
         $this->view = $view;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
+        $this->filterGroupIds = $filterGroupIds;
         // Use provided selectedItemId or check query parameter (backward compatibility)
         $this->selectedItemId = $selectedItemId ?? (request()->has('item') ? (int) request('item') : null);
     }
@@ -123,6 +127,20 @@ new class extends Component
                 <form action="{{ route('boards.filters.apply', $board) }}" method="POST" class="flex items-center gap-2">
                     @csrf
                     <input type="hidden" name="view" value="{{ $view }}" />
+                    <label class="text-sm text-gray-600">Status</label>
+                    <div class="relative" x-data="{ open: false }">
+                        <button type="button" @click="open = !open" class="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                            {{ empty($filterGroupIds) ? 'All' : count($filterGroupIds) . ' selected' }}
+                        </button>
+                        <div x-show="open" @click.outside="open = false" x-cloak class="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                            @foreach($board->groups as $g)
+                                <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50">
+                                    <input type="checkbox" name="status[]" value="{{ $g->id }}" {{ in_array($g->id, $filterGroupIds ?? []) ? 'checked' : '' }} class="rounded border-gray-300" />
+                                    <span>{{ $g->name }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
                     <label class="text-sm text-gray-600">Assignee</label>
                     <select name="assignee" class="rounded-md border border-gray-300 text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" x-model="assigneeSelect">
                         <option value="">All</option>
@@ -137,15 +155,21 @@ new class extends Component
                         <option value="task">Task</option>
                         <option value="bug">Bug</option>
                     </select>
-                    <button type="submit" x-show="assigneeSelect !== appliedAssignee || typeSelect !== appliedType" x-cloak class="rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700">Apply</button>
+                    <button type="submit" class="rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700">Apply</button>
+                </form>
+                <form action="{{ route('boards.filters.reset', $board) }}" method="POST" class="inline">
+                    @csrf
+                    <input type="hidden" name="view" value="{{ $view }}" />
+                    <button type="submit" class="rounded-md border border-gray-300 bg-gray-100 px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-200 hover:text-gray-800">Reset</button>
                 </form>
             </div>
             @endif
             @php
                 $assigneeParam = $filterUnassigned ? 'unassigned' : $filterAssigneeId;
+                $routeParams = array_filter(['board' => $board, 'assignee' => $assigneeParam, 'type' => $filterType, 'status' => !empty($filterGroupIds) ? $filterGroupIds : null]);
             @endphp
-            <a href="{{ route('boards.show', array_filter(['board' => $board, 'view' => 'kanban', 'assignee' => $assigneeParam, 'type' => $filterType])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'kanban' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Kanban View</a>
-            <a href="{{ route('boards.show', array_filter(['board' => $board, 'view' => 'table', 'assignee' => $assigneeParam, 'type' => $filterType])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'table' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">List View</a>
+            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'kanban'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'kanban' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Kanban View</a>
+            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'table'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'table' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">List View</a>
             <a href="{{ route('boards.export-csv', $board) }}" class="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700">Download CSV</a>
             @if(auth()->user()->is_admin)
             <form action="{{ route('boards.destroy', $board) }}" method="POST" class="inline" onsubmit="return confirm('Delete this board and all its tasks?');">
@@ -178,10 +202,10 @@ new class extends Component
     @endif
 
     @if($view === 'table')
-        @livewire('table-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType])
+        @livewire('table-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
     @else
         <div class="rounded-lg bg-gray-900" wire:ignore>
-            @livewire('kanban-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType])
+            @livewire('kanban-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
         </div>
     @endif
 
@@ -286,21 +310,129 @@ new class extends Component
                                 <input x-show="!editing" type="hidden" name="group_id" :disabled="editing" value="{{ $item->group_id ?? '' }}" />
                             </div>
                         </div>
-                        @else
+                        <div class="grid grid-cols-2 gap-3">
+                            <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Priority</label>
+                                    <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                                </div>
+                                <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                    {{ ucfirst($item->priority ?? 'medium') }}
+                                </div>
+                                <select x-show="editing" x-cloak name="priority" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                    @foreach(\App\Models\Item::priorityOptions() as $val => $label)
+                                        <option value="{{ $val }}" {{ (old('priority', $item->priority ?? 'medium') === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <input x-show="!editing" type="hidden" name="priority" :disabled="editing" value="{{ $item->priority ?? 'medium' }}" />
+                            </div>
+                            <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Due date</label>
+                                    <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                                </div>
+                                <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                    @if($item->due_at)
+                                        {{ $item->due_at->format('M j, Y') }}
+                                        @if($item->isOverdue())
+                                            <span class="text-red-600">(Overdue)</span>
+                                        @endif
+                                    @else
+                                        — None —
+                                    @endif
+                                </div>
+                                <input x-show="editing" x-cloak type="date" name="due_at" :disabled="!editing" value="{{ old('due_at', $item->due_at?->format('Y-m-d')) }}" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400" />
+                                <input x-show="!editing" type="hidden" name="due_at" :disabled="editing" value="{{ $item->due_at?->format('Y-m-d') ?? '' }}" />
+                            </div>
+                        </div>
+                        @if($item->isBug())
                         <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
                             <div class="flex items-center justify-between">
-                                <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Type</label>
+                                <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Severity</label>
                                 <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
                             </div>
                             <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
-                                {{ $item->item_type === 'bug' ? 'Bug' : 'Task' }}
+                                {{ ucfirst($item->severity ?? 'major') }}
                             </div>
-                            <select x-show="editing" x-cloak name="item_type" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
-                                <option value="task" {{ (old('item_type', $item->item_type) === 'task') ? 'selected' : '' }}>Task</option>
-                                <option value="bug" {{ (old('item_type', $item->item_type) === 'bug') ? 'selected' : '' }}>Bug</option>
+                            <select x-show="editing" x-cloak name="severity" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                @foreach(\App\Models\Item::severityOptions() as $val => $label)
+                                    <option value="{{ $val }}" {{ (old('severity', $item->severity ?? 'major') === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
                             </select>
-                            <input x-show="!editing" type="hidden" name="item_type" :disabled="editing" value="{{ $item->item_type }}" />
+                            <input x-show="!editing" type="hidden" name="severity" :disabled="editing" value="{{ $item->severity ?? 'major' }}" />
                         </div>
+                        @else
+                        <input type="hidden" name="severity" value="" />
+                        @endif
+                        @else
+                        <div class="grid grid-cols-2 gap-3">
+                            <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Type</label>
+                                    <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                                </div>
+                                <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                    {{ $item->item_type === 'bug' ? 'Bug' : 'Task' }}
+                                </div>
+                                <select x-show="editing" x-cloak name="item_type" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                    <option value="task" {{ (old('item_type', $item->item_type) === 'task') ? 'selected' : '' }}>Task</option>
+                                    <option value="bug" {{ (old('item_type', $item->item_type) === 'bug') ? 'selected' : '' }}>Bug</option>
+                                </select>
+                                <input x-show="!editing" type="hidden" name="item_type" :disabled="editing" value="{{ $item->item_type }}" />
+                            </div>
+                            <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Priority</label>
+                                    <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                                </div>
+                                <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                    {{ ucfirst($item->priority ?? 'medium') }}
+                                </div>
+                                <select x-show="editing" x-cloak name="priority" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                    @foreach(\App\Models\Item::priorityOptions() as $val => $label)
+                                        <option value="{{ $val }}" {{ (old('priority', $item->priority ?? 'medium') === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <input x-show="!editing" type="hidden" name="priority" :disabled="editing" value="{{ $item->priority ?? 'medium' }}" />
+                            </div>
+                        </div>
+                        <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Due date</label>
+                                <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                            </div>
+                            <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                @if($item->due_at)
+                                    {{ $item->due_at->format('M j, Y') }}
+                                    @if($item->isOverdue())
+                                        <span class="text-red-600">(Overdue)</span>
+                                    @endif
+                                @else
+                                    — None —
+                                @endif
+                            </div>
+                            <input x-show="editing" x-cloak type="date" name="due_at" :disabled="!editing" value="{{ old('due_at', $item->due_at?->format('Y-m-d')) }}" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400" />
+                            <input x-show="!editing" type="hidden" name="due_at" :disabled="editing" value="{{ $item->due_at?->format('Y-m-d') ?? '' }}" />
+                        </div>
+                        @if($item->isBug())
+                        <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Severity</label>
+                                <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                            </div>
+                            <div x-show="!editing" class="mt-0.5 text-sm text-gray-900">
+                                {{ ucfirst($item->severity ?? 'major') }}
+                            </div>
+                            <select x-show="editing" x-cloak name="severity" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                @foreach(\App\Models\Item::severityOptions() as $val => $label)
+                                    <option value="{{ $val }}" {{ (old('severity', $item->severity ?? 'major') === $val) ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <input x-show="!editing" type="hidden" name="severity" :disabled="editing" value="{{ $item->severity ?? 'major' }}" />
+                        </div>
+                        @else
+                        <input type="hidden" name="severity" value="" />
+                        @endif
                         @endif
                         <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
                             <div class="flex items-center justify-between">
@@ -540,6 +672,23 @@ new class extends Component
                                         $icon = '🔄';
                                         $iconBg = 'bg-purple-100';
                                         $iconText = 'text-purple-700';
+                                    } elseif ($activity->field === 'priority') {
+                                        $text = 'changed priority from "' . ucfirst($activity->old_value ?? 'medium') . '" to "' . ucfirst($activity->new_value ?? 'medium') . '"';
+                                        $icon = '⚡';
+                                        $iconBg = 'bg-amber-100';
+                                        $iconText = 'text-amber-700';
+                                    } elseif ($activity->field === 'severity') {
+                                        $text = 'changed severity from "' . ucfirst($activity->old_value ?? '—') . '" to "' . ucfirst($activity->new_value ?? '—') . '"';
+                                        $icon = '🐛';
+                                        $iconBg = 'bg-red-100';
+                                        $iconText = 'text-red-700';
+                                    } elseif ($activity->field === 'due_at') {
+                                        $old = $activity->old_value ? \Carbon\Carbon::parse($activity->old_value)->format('M j, Y') : 'None';
+                                        $new = $activity->new_value ? \Carbon\Carbon::parse($activity->new_value)->format('M j, Y') : 'None';
+                                        $text = 'changed due date from "' . $old . '" to "' . $new . '"';
+                                        $icon = '📅';
+                                        $iconBg = 'bg-indigo-100';
+                                        $iconText = 'text-indigo-700';
                                     } else {
                                         $text = 'updated ' . $activity->field;
                                     }

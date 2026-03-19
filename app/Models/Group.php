@@ -12,10 +12,12 @@ class Group extends Model
         'board_id',
         'name',
         'position',
+        'wip_limit',
     ];
 
     protected $casts = [
         'position' => 'integer',
+        'wip_limit' => 'integer',
     ];
 
     public function board(): BelongsTo

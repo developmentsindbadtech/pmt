@@ -33,6 +33,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/boards/{board}/export-csv', [BoardController::class, 'exportCsv'])->name('boards.export-csv');
     Route::get('/boards/{board}', [BoardController::class, 'show'])->name('boards.show');
     Route::post('/boards/{board}/filters', [BoardController::class, 'applyFilters'])->name('boards.filters.apply');
+    Route::post('/boards/{board}/filters/reset', [BoardController::class, 'resetFilters'])->name('boards.filters.reset');
     Route::delete('/boards/{board}', [BoardController::class, 'destroy'])->name('boards.destroy');
     Route::post('/boards/{board}/items', [ItemController::class, 'store'])->name('items.store');
     Route::put('/boards/{board}/items/{item}', [ItemController::class, 'update'])->name('items.update');

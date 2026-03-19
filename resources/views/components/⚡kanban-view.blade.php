@@ -13,17 +13,23 @@ new class extends Component
 
     public ?string $filterType = null;
 
-    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null): void
+    /** @var array<int> Filter by status/group IDs — only show these columns (empty = all) */
+    public array $filterGroupIds = [];
+
+    public string $filterSearch = '';
+
+    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = []): void
     {
         $this->boardId = $boardId;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
+        $this->filterGroupIds = $filterGroupIds;
     }
 
     public function getBoardProperty(): ?Board
     {
-        $board = Board::with(['groups' => fn ($q) => $q->orderBy('position')->with(['items' => function ($q) {
+        $groupsQuery = fn ($q) => $q->orderBy('position')->when(! empty($this->filterGroupIds), fn ($sub) => $sub->whereIn('id', $this->filterGroupIds))->with(['items' => function ($q) {
             $q->orderBy('position')->limit(150)->with('assignee');
             if ($this->filterUnassigned) {
                 $q->whereNull('assignee_id');
@@ -33,7 +39,18 @@ new class extends Component
             if ($this->filterType !== null) {
                 $q->where('item_type', $this->filterType);
             }
-        }])])
+            if ($this->filterSearch !== '') {
+                $search = '%' . strtolower($this->filterSearch) . '%';
+                $numSearch = '%' . $this->filterSearch . '%';
+                $castType = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite' ? 'TEXT' : 'CHAR';
+                $q->where(function ($sub) use ($search, $numSearch, $castType) {
+                    $sub->whereRaw('LOWER(name) LIKE ?', [$search])
+                        ->orWhereRaw("CAST(number AS {$castType}) LIKE ?", [$numSearch]);
+                });
+            }
+        }]);
+
+        $board = Board::with(['groups' => $groupsQuery])
             ->where('id', $this->boardId)
             ->first();
 
@@ -46,6 +63,13 @@ new class extends Component
     $board = $this->board;
 @endphp
 @if($board)
+<div class="space-y-2">
+    <div class="flex items-center gap-2">
+        <input type="text" wire:model.live.debounce.300ms="filterSearch" placeholder="Search by name or #number..." class="w-64 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+        @if($filterSearch !== '')
+            <button type="button" wire:click="$set('filterSearch', '')" class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100">Clear</button>
+        @endif
+    </div>
 <div class="js-kanban-board flex h-[calc(100vh-16rem)] max-h-[calc(100vh-16rem)] min-h-[420px] flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 bg-gray-900" data-board-id="{{ $board->id }}">
     <div class="flex min-h-0 flex-1">
         @foreach($board->groups as $index => $group)
@@ -54,10 +78,15 @@ new class extends Component
                 data-group-id="{{ $group->id }}"
             >
                 <div class="shrink-0 border-b border-gray-700 bg-gray-800 px-4 py-3">
-                    <h3 class="font-medium text-white">{{ $group->name }}</h3>
+                    <h3 class="font-medium text-white">
+                        {{ $group->name }}
+                        <span class="ml-1.5 text-gray-400">({{ $group->items->count() }})</span>
+                        @if($group->wip_limit)
+                            <span class="{{ $group->items->count() > $group->wip_limit ? 'text-red-400' : 'text-gray-400' }}">/ {{ $group->wip_limit }}</span>
+                        @endif
+                    </h3>
                 </div>
                 <div class="kanban-column-body flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 bg-gray-800">
-                    @if($index === 0)
                     <form action="{{ route('items.store', $board) }}" method="POST" class="shrink-0 rounded-md border border-dashed border-gray-600 p-2" x-data="{ title: '' }">
                         @csrf
                         <input type="hidden" name="group_id" value="{{ $group->id }}" />
@@ -69,7 +98,6 @@ new class extends Component
                             </button>
                         </div>
                     </form>
-                    @endif
                     @foreach($group->items as $item)
                         <div
                             class="kanban-item cursor-grab rounded border border-gray-600/80 bg-gray-700/90 p-2.5 transition-opacity duration-200 active:cursor-grabbing hover:border-gray-500"
@@ -81,11 +109,17 @@ new class extends Component
                                 <a href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" class="js-kanban-open-item flex min-w-0 flex-1 items-baseline gap-1 text-sm text-gray-200 hover:text-white hover:underline focus:outline-none focus:bg-transparent" data-item-id="{{ $item->id }}" title="{{ $item->name }}" onclick="event.stopPropagation()" draggable="false"><span class="shrink-0 text-gray-500">#{{ $item->number }}</span><span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></a>
                                 <button type="button" class="js-kanban-delete flex-shrink-0 rounded p-0.5 text-gray-500 hover:text-red-400" title="Delete" aria-label="Delete" draggable="false">&#215;</button>
                             </div>
-                            <div class="mt-1 flex items-center gap-2 text-xs">
+                            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                 @if($item->item_type === 'bug')
                                     <span class="text-red-400">Bug</span>
                                 @else
                                     <span class="text-amber-400">Task</span>
+                                @endif
+                                @if(($item->priority ?? 'medium') === 'critical' || ($item->priority ?? 'medium') === 'high')
+                                    <span class="rounded px-1 {{ ($item->priority ?? '') === 'critical' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300' }}">{{ ucfirst($item->priority ?? '') }}</span>
+                                @endif
+                                @if($item->due_at)
+                                    <span class="{{ $item->isOverdue() ? 'text-red-400' : 'text-gray-500' }}" title="Due {{ $item->due_at->format('M j, Y') }}">Due {{ $item->due_at->format('M j') }}</span>
                                 @endif
                                 <span class="text-gray-600">·</span>
                                 @if($item->assignee)
@@ -114,6 +148,7 @@ new class extends Component
             </div>
         @endforeach
     </div>
+</div>
 </div>
 @else
 <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">Board not found.</div>

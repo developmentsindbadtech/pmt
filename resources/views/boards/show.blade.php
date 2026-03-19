@@ -10,6 +10,7 @@
             'filterAssigneeId' => $filterAssigneeId ?? null, 
             'filterUnassigned' => $filterUnassigned ?? false, 
             'filterType' => $filterType ?? null, 
+            'filterGroupIds' => $filterGroupIds ?? [], 
             'selectedItemId' => $selectedItemId ?? null
         ])
     </div>

@@ -30,6 +30,8 @@ class Item extends Model
         'number',
         'name',
         'item_type',
+        'priority',
+        'severity',
         'description',
         'repro_steps',
         'attachments',
@@ -37,12 +39,14 @@ class Item extends Model
         'position',
         'created_by',
         'assignee_id',
+        'due_at',
     ];
 
     protected $casts = [
         'position' => 'integer',
         'number' => 'integer',
         'attachments' => 'array',
+        'due_at' => 'date',
     ];
 
     public function board(): BelongsTo
@@ -88,5 +92,20 @@ class Item extends Model
     public function isBug(): bool
     {
         return $this->item_type === 'bug';
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->due_at && $this->due_at->isPast();
+    }
+
+    public static function priorityOptions(): array
+    {
+        return ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'critical' => 'Critical'];
+    }
+
+    public static function severityOptions(): array
+    {
+        return ['minor' => 'Minor', 'major' => 'Major', 'critical' => 'Critical', 'blocker' => 'Blocker'];
     }
 }

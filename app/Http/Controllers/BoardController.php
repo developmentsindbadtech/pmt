@@ -144,12 +144,14 @@ class BoardController extends Controller
             $filterAssigneeId = $saved?->assignee_id;
         }
         $filterType = $request->has('type') ? (in_array($request->string('type')->toString(), ['task', 'bug'], true) ? $request->string('type')->toString() : null) : ($saved?->item_type);
+        $filterGroupIds = $request->has('status') ? array_filter(array_map('intval', (array) $request->input('status'))) : ($saved?->filter_group_ids ?? []);
 
         return view('boards.show', [
             'board' => $board,
             'filterAssigneeId' => $filterAssigneeId,
             'filterUnassigned' => $filterUnassigned,
             'filterType' => $filterType,
+            'filterGroupIds' => $filterGroupIds,
         ]);
     }
 
@@ -197,6 +199,7 @@ class BoardController extends Controller
             $filterAssigneeId = $saved?->assignee_id;
         }
         $filterType = $request->has('type') ? (in_array($request->string('type')->toString(), ['task', 'bug'], true) ? $request->string('type')->toString() : null) : ($saved?->item_type);
+        $filterGroupIds = $request->has('status') ? array_filter(array_map('intval', (array) $request->input('status'))) : ($saved?->filter_group_ids ?? []);
 
         // Get view from query parameter or default
         $view = $request->input('view', 'kanban');
@@ -206,6 +209,7 @@ class BoardController extends Controller
             'filterAssigneeId' => $filterAssigneeId,
             'filterUnassigned' => $filterUnassigned,
             'filterType' => $filterType,
+            'filterGroupIds' => $filterGroupIds,
             'selectedItemId' => $itemModel->id, // Pass item ID to Livewire component
         ]);
     }
@@ -222,10 +226,12 @@ class BoardController extends Controller
         $assigneeId = $filterUnassigned || $assigneeParam === '' || $assigneeParam === null ? null : (int) $assigneeParam;
         $type = $request->input('type');
         $type = in_array($type, ['task', 'bug'], true) ? $type : null;
+        $statusInput = $request->input('status');
+        $filterGroupIds = $statusInput ? array_filter(array_map('intval', (array) $statusInput)) : null;
 
         UserBoardFilter::updateOrCreate(
             ['user_id' => $user->id, 'board_id' => $board->id],
-            ['assignee_id' => $assigneeId, 'filter_unassigned' => $filterUnassigned, 'item_type' => $type]
+            ['assignee_id' => $assigneeId, 'filter_unassigned' => $filterUnassigned, 'item_type' => $type, 'filter_group_ids' => $filterGroupIds]
         );
 
         $params = ['board' => $board, 'view' => $request->input('view', 'kanban')];
@@ -237,8 +243,27 @@ class BoardController extends Controller
         if ($type !== null) {
             $params['type'] = $type;
         }
+        if (! empty($filterGroupIds)) {
+            $params['status'] = $filterGroupIds;
+        }
 
         return redirect()->route('boards.show', $params);
+    }
+
+    public function resetFilters(Request $request, Board $board): RedirectResponse
+    {
+        $user = $request->user();
+        if (! $user->is_admin && ! $board->users->contains($user->id)) {
+            abort(403, 'You do not have access to this board.');
+        }
+
+        UserBoardFilter::updateOrCreate(
+            ['user_id' => $user->id, 'board_id' => $board->id],
+            ['assignee_id' => null, 'filter_unassigned' => false, 'item_type' => null, 'filter_group_ids' => null]
+        );
+
+        return redirect()->route('boards.show', ['board' => $board, 'view' => $request->input('view', 'kanban')])
+            ->with('success', 'Filters reset to default.');
     }
 
     public function destroy(Request $request, Board $board): RedirectResponse
@@ -290,20 +315,24 @@ class BoardController extends Controller
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
             
             // Headers
-            fputcsv($file, ['#', 'Name', 'Description', 'Status', 'Type', 'Assignee', 'Last Updated', 'Updated By']);
+            fputcsv($file, ['#', 'Name', 'Description', 'Status', 'Type', 'Priority', 'Severity', 'Due Date', 'Assignee', 'Last Updated', 'Updated By']);
             
             // Data rows
             foreach ($items as $item) {
                 $lastActivity = $item->activities->first();
                 $updatedBy = $lastActivity?->user?->name ?? $item->creator?->name ?? '—';
                 $lastUpdated = $item->updated_at ? $item->updated_at->format('M d, Y H:i') : '—';
+                $dueDate = $item->due_at ? $item->due_at->format('Y-m-d') : '—';
                 
                 fputcsv($file, [
                     $item->number,
                     $item->name,
-                    $item->description ?? '',
+                    $item->description ?? $item->repro_steps ?? '',
                     $item->group?->name ?? '—',
                     ucfirst($item->item_type ?? '—'),
+                    ucfirst($item->priority ?? 'medium'),
+                    $item->isBug() ? ucfirst($item->severity ?? '—') : '—',
+                    $dueDate,
                     $item->assignee?->name ?? '—',
                     $lastUpdated,
                     $updatedBy,

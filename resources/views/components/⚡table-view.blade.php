@@ -13,6 +13,9 @@ new class extends Component
 
     public ?string $filterType = null;
 
+    /** @var array<int> Filter by status/group IDs — only show items in these columns (empty = all) */
+    public array $filterGroupIds = [];
+
     public string $sortColumn = 'position';
 
     public string $sortDirection = 'asc';
@@ -27,12 +30,13 @@ new class extends Component
 
     public int $perPage = 20;
 
-    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null): void
+    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = []): void
     {
         $this->boardId = $boardId;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
+        $this->filterGroupIds = $filterGroupIds;
     }
 
     public function getBoardProperty(): ?Board
@@ -60,14 +64,17 @@ new class extends Component
         if ($this->filterType !== null) {
             $itemsQuery->where('item_type', $this->filterType);
         }
+        if (! empty($this->filterGroupIds)) {
+            $itemsQuery->whereIn('group_id', $this->filterGroupIds);
+        }
         
         // Apply sorting - clear any existing orderBy first
         $itemsQuery->reorder();
         
         if ($this->sortColumn === 'number') {
-            // Ensure numerical sorting - use explicit integer ordering
+            // Ensure numerical sorting - INTEGER works in SQLite and MySQL
             $direction = strtoupper($this->sortDirection);
-            $itemsQuery->orderByRaw("CAST(number AS UNSIGNED) {$direction}");
+            $itemsQuery->orderByRaw("CAST(number AS INTEGER) {$direction}");
         } elseif ($this->sortColumn === 'name') {
             $direction = strtoupper($this->sortDirection);
             $itemsQuery->orderByRaw("LOWER(name) {$direction}");
@@ -91,6 +98,11 @@ new class extends Component
                 ->orderByRaw("LOWER(COALESCE(users.name, '')) {$direction}");
         } elseif ($this->sortColumn === 'updated_at') {
             $itemsQuery->orderBy('updated_at', $this->sortDirection);
+        } elseif ($this->sortColumn === 'priority') {
+            $itemsQuery->orderByRaw("CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END " . $this->sortDirection);
+        } elseif ($this->sortColumn === 'due_at') {
+            $direction = strtoupper($this->sortDirection);
+            $itemsQuery->orderByRaw("CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at {$direction}");
         } else {
             $itemsQuery->orderBy('position', 'asc');
         }
@@ -107,6 +119,9 @@ new class extends Component
         }
         if ($this->filterType !== null) {
             $countQuery->where('item_type', $this->filterType);
+        }
+        if (! empty($this->filterGroupIds)) {
+            $countQuery->whereIn('group_id', $this->filterGroupIds);
         }
         $totalItems = $countQuery->count();
         
@@ -226,6 +241,22 @@ new class extends Component
                             @endif
                         </button>
                     </th>
+                    <th class="w-20 px-2 py-2 text-left text-xs font-medium text-gray-500">
+                        <button type="button" wire:click="sortBy('priority')" class="font-medium text-gray-600 hover:text-gray-900">
+                            Priority
+                            @if($this->sortColumn === 'priority')
+                                <span class="text-gray-400">{{ $this->sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                            @endif
+                        </button>
+                    </th>
+                    <th class="w-24 px-2 py-2 text-left text-xs font-medium text-gray-500">
+                        <button type="button" wire:click="sortBy('due_at')" class="font-medium text-gray-600 hover:text-gray-900">
+                            Due
+                            @if($this->sortColumn === 'due_at')
+                                <span class="text-gray-400">{{ $this->sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                            @endif
+                        </button>
+                    </th>
                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">
                         <button type="button" wire:click="sortBy('assignee')" class="font-medium text-gray-600 hover:text-gray-900">
                             Assignee
@@ -259,6 +290,14 @@ new class extends Component
                                 <span class="text-xs text-red-600">Bug</span>
                             @else
                                 <span class="text-xs text-amber-600">Task</span>
+                            @endif
+                        </td>
+                        <td class="px-2 py-2 text-sm text-gray-600">{{ ucfirst($item->priority ?? 'medium') }}</td>
+                        <td class="px-2 py-2 text-sm text-gray-600">
+                            @if($item->due_at)
+                                <span class="{{ $item->isOverdue() ? 'text-red-600' : '' }}">{{ $item->due_at->format('M j, Y') }}</span>
+                            @else
+                                —
                             @endif
                         </td>
                         <td class="px-2 py-2 text-sm text-gray-600">
@@ -327,7 +366,7 @@ new class extends Component
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-2 py-16 text-center text-sm text-gray-400">No items. Add one above.</td>
+                        <td colspan="10" class="px-2 py-16 text-center text-sm text-gray-400">No items. Add one above.</td>
                     </tr>
                 @endforelse
             </tbody>
