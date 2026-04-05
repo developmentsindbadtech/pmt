@@ -101,7 +101,9 @@ new class extends Component
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="view" value="{{ request('view', $board->view_type) }}" />
-                <input type="hidden" name="return_item" value="1" />
+                @if(request('view', $board->view_type) !== 'kanban')
+                    <input type="hidden" name="return_item" value="1" />
+                @endif
 
                 <div x-data="{ editing: false }" wire:ignore.self>
                     <div class="flex items-center justify-between">

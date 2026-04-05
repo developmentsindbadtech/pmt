@@ -10,7 +10,6 @@ use App\Services\MentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -19,16 +18,16 @@ class BoardController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
-        
+
         $query = Board::query()->withCount('items');
-        
+
         // Admins see all boards, regular users only see assigned boards
         if (! $user->is_admin) {
             $query->whereHas('users', function ($q) use ($user) {
                 $q->where('users.id', $user->id);
             });
         }
-        
+
         $boards = $query->orderBy('name', 'asc')
             ->limit(50)
             ->get();
@@ -41,6 +40,7 @@ class BoardController extends Controller
         if (! $request->user()->is_admin) {
             abort(403, 'Only administrators can create boards.');
         }
+
         return view('boards.create');
     }
 
@@ -115,13 +115,14 @@ class BoardController extends Controller
                     $q->where('id', $itemParam)->orWhere('number', $itemParam);
                 })
                 ->first();
-            
+
             if ($item) {
                 $view = $request->input('view', 'kanban');
+
                 return redirect()->route('boards.show.item', [
                     'board' => $board->id,
                     'item' => $item->number,
-                    'view' => $view
+                    'view' => $view,
                 ], 301);
             }
         }
@@ -130,7 +131,7 @@ class BoardController extends Controller
         $board->load([
             'columns' => fn ($q) => $q->orderBy('position'),
             'groups' => fn ($q) => $q->orderBy('position'),
-            'items.itemColumnValues.column'
+            'items.itemColumnValues.column',
         ]);
 
         // Resolve filters: query params override saved per-user filters
@@ -175,7 +176,7 @@ class BoardController extends Controller
             ->where('number', $item)
             ->first();
 
-        if (!$itemModel) {
+        if (! $itemModel) {
             // Item not found, redirect to board without item
             return redirect()->route('boards.show', ['board' => $board->id])
                 ->with('error', 'Task not found.');
@@ -185,7 +186,7 @@ class BoardController extends Controller
         $board->load([
             'columns' => fn ($q) => $q->orderBy('position'),
             'groups' => fn ($q) => $q->orderBy('position'),
-            'items.itemColumnValues.column'
+            'items.itemColumnValues.column',
         ]);
 
         // Resolve filters: query params override saved per-user filters
@@ -272,6 +273,7 @@ class BoardController extends Controller
             abort(403, 'Only administrators can delete boards.');
         }
         $board->delete();
+
         return redirect()->route('boards.index')->with('success', 'Board deleted.');
     }
 
@@ -282,17 +284,17 @@ class BoardController extends Controller
         if (! $user->is_admin && ! $board->users->contains($user->id)) {
             abort(403, 'You do not have access to this board.');
         }
-        
+
         $mentionService = app(MentionService::class);
         $users = $mentionService->getMentionableUsers($board);
-        
+
         return response()->json($users);
     }
 
     public function exportCsv(Request $request, Board $board): StreamedResponse
     {
         $user = $request->user();
-        
+
         // Check access
         if (! $user->is_admin && ! $board->users->contains($user->id)) {
             abort(403, 'You do not have access to this board.');
@@ -300,30 +302,30 @@ class BoardController extends Controller
 
         // Load all items with relationships
         $items = $board->items()
-            ->with(['group', 'assignee', 'creator', 'activities' => function ($q) {
+            ->with(['group', 'assignee', 'creator', 'parent', 'activities' => function ($q) {
                 $q->with('user')->orderByDesc('created_at')->limit(1);
             }])
             ->orderBy('number', 'asc')
             ->get();
 
-        $filename = str_replace([' ', '/'], ['_', '-'], $board->name) . '_' . date('Y-m-d') . '.csv';
+        $filename = str_replace([' ', '/'], ['_', '-'], $board->name).'_'.date('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($items) {
             $file = fopen('php://output', 'w');
-            
+
             // BOM for Excel UTF-8 compatibility
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-            
+
             // Headers
-            fputcsv($file, ['#', 'Name', 'Description', 'Status', 'Type', 'Priority', 'Severity', 'Due Date', 'Assignee', 'Last Updated', 'Updated By']);
-            
+            fputcsv($file, ['#', 'Name', 'Description', 'Status', 'Type', 'Priority', 'Severity', 'Due Date', 'Assignee', 'Parent', 'Dev tag', 'Last Updated', 'Updated By']);
+
             // Data rows
             foreach ($items as $item) {
                 $lastActivity = $item->activities->first();
                 $updatedBy = $lastActivity?->user?->name ?? $item->creator?->name ?? '—';
                 $lastUpdated = $item->updated_at ? $item->updated_at->format('M d, Y H:i') : '—';
                 $dueDate = $item->due_at ? $item->due_at->format('Y-m-d') : '—';
-                
+
                 fputcsv($file, [
                     $item->number,
                     $item->name,
@@ -334,15 +336,17 @@ class BoardController extends Controller
                     $item->isBug() ? ucfirst($item->severity ?? '—') : '—',
                     $dueDate,
                     $item->assignee?->name ?? '—',
+                    \App\Models\Item::formatParentRef($item->parent) ?? '—',
+                    \App\Models\Item::devTagLabel($item->dev_tag) ?? '—',
                     $lastUpdated,
                     $updatedBy,
                 ]);
             }
-            
+
             fclose($file);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
     }
 }

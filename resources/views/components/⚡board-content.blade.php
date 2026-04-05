@@ -12,6 +12,9 @@ new class extends Component
 
     public string $view = 'kanban';
 
+    /** Kanban column search (lives on parent so wire:model survives parent morphs). */
+    public string $filterSearch = '';
+
     public ?int $selectedItemId = null;
 
     /** @var int|null Filter by assignee (null = All or Unassigned) */
@@ -62,6 +65,11 @@ new class extends Component
         $this->selectedItemId = null;
     }
 
+    public function clearKanbanSearch(): void
+    {
+        $this->filterSearch = '';
+    }
+
     public function getBoardProperty(): ?Board
     {
         return Board::with(['columns' => fn ($q) => $q->orderBy('position'), 'groups', 'users'])
@@ -76,7 +84,15 @@ new class extends Component
         }
         
         // Always load creator to avoid N+1 queries, but it's lightweight
-        return Item::with(['assignee', 'group', 'comments' => fn ($q) => $q->with('user')->orderByDesc('created_at')->limit(50), 'creator', 'activities' => fn ($q) => $q->with('user')->orderByDesc('created_at')])
+        return Item::with([
+            'assignee',
+            'group',
+            'parent',
+            'children' => fn ($q) => $q->orderBy('number'),
+            'comments' => fn ($q) => $q->with('user')->orderByDesc('created_at')->limit(50),
+            'creator',
+            'activities' => fn ($q) => $q->with('user')->orderByDesc('created_at'),
+        ])
             ->where('board_id', $this->boardId)
             ->find($this->selectedItemId);
     }
@@ -204,8 +220,40 @@ new class extends Component
     @if($view === 'table')
         @livewire('table-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
     @else
-        <div class="rounded-lg bg-gray-900" wire:ignore>
-            @livewire('kanban-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
+        <div class="space-y-3 rounded-lg bg-gray-900 p-3 ring-1 ring-white/5">
+            @if($board)
+                <div class="flex flex-col gap-2 rounded-xl border border-gray-700/80 bg-gray-800/70 p-2 shadow-sm sm:flex-row sm:items-center">
+                    <div class="relative min-w-0 flex-1">
+                        <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.473 9.766l2.63 2.631a.75.75 0 1 0 1.06-1.06l-2.63-2.632A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd" />
+                            </svg>
+                        </span>
+                        <input
+                            type="text"
+                            wire:model.live.debounce.350ms="filterSearch"
+                            wire:keydown.enter.prevent
+                            placeholder="Search by name or #number..."
+                            autocomplete="off"
+                            class="w-full rounded-lg border border-gray-700 bg-gray-900/90 py-2.5 pl-9 pr-3 text-sm text-gray-100 placeholder:text-gray-500 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        wire:click="clearKanbanSearch"
+                        @disabled(trim($filterSearch) === '')
+                        class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 px-3 text-xs font-medium text-gray-200 transition hover:border-gray-500 hover:bg-gray-700 disabled:pointer-events-none disabled:opacity-40"
+                    >Clear</button>
+                </div>
+            @endif
+            @livewire('kanban-view', [
+                'boardId' => $boardId,
+                'filterAssigneeId' => $filterAssigneeId,
+                'filterUnassigned' => $filterUnassigned,
+                'filterType' => $filterType,
+                'filterGroupIds' => $filterGroupIds,
+                'filterSearch' => $filterSearch,
+            ], key('kanban-'.$boardId.'-'.md5($filterSearch)))
         </div>
     @endif
 
@@ -257,15 +305,17 @@ new class extends Component
                         </button>
                     </nav>
                 </div>
-                <div class="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3" 
+                <div class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3" 
                      x-ref="scrollContainer"
                      style="scrollbar-width: thin; scrollbar-color: rgb(156 163 175) rgb(243 244 246);">
                     <div x-show="$wire.activeTab === 'details'" style="display: {{ $activeTab === 'details' ? 'block' : 'none' }};">
-                    <form action="{{ route('items.update', [$board, $item]) }}" method="POST" class="space-y-3">
+                    <form action="{{ route('items.update', [$board, $item]) }}" method="POST" class="min-w-0 space-y-3">
                         @csrf
                         @method('PUT')
                         <input type="hidden" name="view" value="{{ $view }}" />
-                        <input type="hidden" name="return_item" value="1" />
+                        @if($view !== 'kanban')
+                            <input type="hidden" name="return_item" value="1" />
+                        @endif
                         <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
                             <div class="flex items-center justify-between">
                                 <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Title</label>
@@ -467,6 +517,69 @@ new class extends Component
                                 @endforeach
                             </select>
                             <input x-show="!editing" type="hidden" name="assignee_id" :disabled="editing" value="{{ $item->assignee_id ?? '' }}" />
+                        </div>
+                        @php
+                            $boardItemsForParent = \App\Models\Item::where('board_id', $board->id)->get(['id', 'parent_id', 'number', 'name']);
+                            $parentCandidates = \App\Models\Item::filterValidParentCandidates($item, $boardItemsForParent);
+                        @endphp
+                        <div x-data="{ editing: false }" class="min-w-0 rounded border border-gray-200 px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Related to</label>
+                                <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                            </div>
+                            <div x-show="!editing" class="mt-0.5 min-w-0 text-sm text-gray-900">
+                                @if($item->parent)
+                                    <button type="button" wire:click="openItem({{ $item->parent->id }})" class="block w-full max-w-full cursor-pointer truncate text-left text-blue-600 hover:underline" title="{{ e('#'.$item->parent->number.' '.$item->parent->name) }}">#{{ $item->parent->number }} {{ $item->parent->name }}</button>
+                                @else
+                                    <span class="text-gray-500">— None —</span>
+                                @endif
+                            </div>
+                            <select x-show="editing" x-cloak name="parent_id" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                <option value="">— None —</option>
+                                @foreach($parentCandidates as $p)
+                                    <option value="{{ $p->id }}" {{ (string) old('parent_id', $item->parent_id ?? '') === (string) $p->id ? 'selected' : '' }}>#{{ $p->number }} — {{ \Illuminate\Support\Str::limit($p->name, 48) }}</option>
+                                @endforeach
+                            </select>
+                            <input x-show="!editing" type="hidden" name="parent_id" :disabled="editing" value="{{ old('parent_id', $item->parent_id ?? '') }}" />
+                        </div>
+                        @if($item->children->isNotEmpty())
+                        <div class="min-w-0 rounded border border-gray-200 px-3 py-2">
+                            <span class="block text-xs font-medium uppercase tracking-wide text-gray-500">Sub-items</span>
+                            <ul class="mt-1.5 min-w-0 space-y-1">
+                                @foreach($item->children as $child)
+                                    <li class="min-w-0">
+                                        <button type="button" wire:click="openItem({{ $child->id }})" class="block w-full max-w-full cursor-pointer truncate text-left text-sm text-blue-600 hover:underline" title="{{ e('#'.$child->number.' '.$child->name) }}">#{{ $child->number }} {{ $child->name }}</button>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                        @endif
+                        @php
+                            $devTagCurrent = old('dev_tag', $item->dev_tag ?? '');
+                            $hasDevTag = filled($devTagCurrent);
+                        @endphp
+                        <div x-data="{ editing: false, hasTag: @json($hasDevTag) }" class="space-y-1">
+                            <div x-show="!hasTag && !editing">
+                                <button type="button" @click="editing = true" class="text-xs text-blue-600 hover:text-blue-700 hover:underline">+ Add dev tag</button>
+                            </div>
+                            <div x-show="hasTag || editing" class="rounded border border-gray-200 px-3 py-2">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">Dev tag</label>
+                                    <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
+                                </div>
+                                <div x-show="!editing" class="mt-0.5">
+                                    @if($hasDevTag)
+                                        <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ \App\Models\Item::devTagLabel($devTagCurrent) }}</span>
+                                    @endif
+                                </div>
+                                <select x-show="editing" x-cloak name="dev_tag" :disabled="!editing" class="mt-0.5 w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:ring-1 focus:ring-gray-400">
+                                    <option value="">— None —</option>
+                                    @foreach(\App\Models\Item::devTagOptions() as $val => $label)
+                                        <option value="{{ $val }}" {{ (string) old('dev_tag', $item->dev_tag ?? '') === (string) $val ? 'selected' : '' }}>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <input x-show="!editing" type="hidden" name="dev_tag" :disabled="editing" value="{{ old('dev_tag', $item->dev_tag ?? '') }}" />
+                            </div>
                         </div>
                         @if($item->isTask())
                         <div x-data="{ editing: false }" class="rounded border border-gray-200 px-3 py-2">
@@ -689,6 +802,20 @@ new class extends Component
                                         $icon = '📅';
                                         $iconBg = 'bg-indigo-100';
                                         $iconText = 'text-indigo-700';
+                                    } elseif ($activity->field === 'dev_tag') {
+                                        $old = $activity->old_value ?? 'None';
+                                        $new = $activity->new_value ?? 'None';
+                                        $text = 'changed dev tag from "' . $old . '" to "' . $new . '"';
+                                        $icon = '🏷️';
+                                        $iconBg = 'bg-violet-100';
+                                        $iconText = 'text-violet-700';
+                                    } elseif ($activity->field === 'parent_id') {
+                                        $old = $activity->old_value ?? 'None';
+                                        $new = $activity->new_value ?? 'None';
+                                        $text = 'changed parent from "' . $old . '" to "' . $new . '"';
+                                        $icon = '🔗';
+                                        $iconBg = 'bg-sky-100';
+                                        $iconText = 'text-sky-700';
                                     } else {
                                         $text = 'updated ' . $activity->field;
                                     }

@@ -18,7 +18,7 @@ class Item extends Model
                     Storage::disk('public')->delete($path);
                 }
             }
-            $dir = 'item-attachments/' . $item->id;
+            $dir = 'item-attachments/'.$item->id;
             if (Storage::disk('public')->exists($dir)) {
                 Storage::disk('public')->deleteDirectory($dir);
             }
@@ -27,6 +27,7 @@ class Item extends Model
 
     protected $fillable = [
         'board_id',
+        'parent_id',
         'number',
         'name',
         'item_type',
@@ -40,6 +41,7 @@ class Item extends Model
         'created_by',
         'assignee_id',
         'due_at',
+        'dev_tag',
     ];
 
     protected $casts = [
@@ -52,6 +54,16 @@ class Item extends Model
     public function board(): BelongsTo
     {
         return $this->belongsTo(Board::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(Item::class, 'parent_id')->orderBy('position');
     }
 
     public function group(): BelongsTo
@@ -107,5 +119,77 @@ class Item extends Model
     public static function severityOptions(): array
     {
         return ['minor' => 'Minor', 'major' => 'Major', 'critical' => 'Critical', 'blocker' => 'Blocker'];
+    }
+
+    /** Predefined workstream tags (stored slug → display with #). */
+    public static function devTagOptions(): array
+    {
+        return [
+            'backend' => '#backend',
+            'frontend' => '#frontend',
+            'data' => '#data',
+            'devops' => '#devops',
+            'api' => '#api',
+            'ui' => '#ui',
+            'mobile' => '#mobile',
+            'security' => '#security',
+            'performance' => '#performance',
+            'docs' => '#docs',
+            'testing' => '#testing',
+            'accessibility' => '#a11y',
+        ];
+    }
+
+    public static function devTagLabel(?string $slug): ?string
+    {
+        if ($slug === null || $slug === '') {
+            return null;
+        }
+
+        return static::devTagOptions()[$slug] ?? ('#'.$slug);
+    }
+
+    /** Human label for history / CSV. */
+    public static function formatParentRef(?self $row): ?string
+    {
+        if ($row === null) {
+            return null;
+        }
+
+        return '#'.$row->number.' '.mb_substr($row->name, 0, 80);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Item>  $sameBoardItems  Items on the board (id, parent_id, number, name).
+     * @return \Illuminate\Support\Collection<int, Item>
+     */
+    public static function filterValidParentCandidates(self $item, \Illuminate\Support\Collection $sameBoardItems): \Illuminate\Support\Collection
+    {
+        $byId = $sameBoardItems->keyBy('id');
+        $itemId = $item->id;
+
+        $createsCycle = function (int $candidateParentId) use ($byId, $itemId): bool {
+            $current = $candidateParentId;
+            $guard = 0;
+            while ($current && $guard < 500) {
+                if ($current === $itemId) {
+                    return true;
+                }
+                $row = $byId->get($current);
+                if (! $row || ! $row->parent_id) {
+                    break;
+                }
+                $current = (int) $row->parent_id;
+                $guard++;
+            }
+
+            return false;
+        };
+
+        return $sameBoardItems
+            ->filter(fn (self $row) => $row->id !== $itemId)
+            ->filter(fn (self $row) => ! $createsCycle((int) $row->id))
+            ->sortBy('number')
+            ->values();
     }
 }

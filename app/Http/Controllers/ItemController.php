@@ -5,16 +5,16 @@ namespace App\Http\Controllers;
 use App\Models\Board;
 use App\Models\Item;
 use App\Models\ItemActivity;
-use App\Models\ItemComment;
 use App\Models\ItemColumnValue;
+use App\Models\ItemComment;
 use App\Models\User;
 use App\Services\MentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class ItemController extends Controller
 {
@@ -50,7 +50,7 @@ class ItemController extends Controller
             'created_by' => $request->user()->id,
             'assignee_id' => $validated['assignee_id'] ?? null,
         ]);
-        
+
         // Create activity record for item creation
         ItemActivity::create([
             'item_id' => $item->id,
@@ -60,7 +60,7 @@ class ItemController extends Controller
             'old_value' => null,
             'new_value' => null,
         ]);
-        
+
         // Send assignment notification if assignee is set
         if ($item->assignee_id && $item->assignee_id != $request->user()->id) {
             $this->sendAssignmentNotification($item, $board, $request->user());
@@ -106,6 +106,31 @@ class ItemController extends Controller
             'description' => 'nullable|string|max:10000',
             'repro_steps' => 'nullable|string|max:10000',
             'assignee_id' => 'nullable|exists:users,id',
+            'dev_tag' => ['nullable', 'string', Rule::in(array_keys(Item::devTagOptions()))],
+            'parent_id' => [
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail) use ($board, $item): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    $pid = (int) $value;
+                    if (! Item::where('board_id', $board->id)->whereKey($pid)->exists()) {
+                        $fail('Parent must be an item on this board.');
+
+                        return;
+                    }
+                    if ($pid === $item->id) {
+                        $fail('An item cannot be its own parent.');
+
+                        return;
+                    }
+                    $all = Item::where('board_id', $board->id)->get(['id', 'parent_id', 'number', 'name']);
+                    if (! Item::filterValidParentCandidates($item, $all)->firstWhere('id', $pid)) {
+                        $fail('That parent would create a circular hierarchy.');
+                    }
+                },
+            ],
         ]);
 
         // When changing type: copy description ↔ repro_steps so content is not lost
@@ -122,8 +147,14 @@ class ItemController extends Controller
             }
         }
 
-        $allowed = ['name', 'group_id', 'item_type', 'priority', 'severity', 'due_at', 'description', 'repro_steps', 'assignee_id'];
+        $allowed = ['name', 'group_id', 'item_type', 'priority', 'severity', 'due_at', 'description', 'repro_steps', 'assignee_id', 'dev_tag', 'parent_id'];
         $updates = array_intersect_key($validated, array_flip($allowed));
+        if (array_key_exists('dev_tag', $updates)) {
+            $updates['dev_tag'] = $updates['dev_tag'] === '' || $updates['dev_tag'] === null ? null : $updates['dev_tag'];
+        }
+        if (array_key_exists('parent_id', $updates)) {
+            $updates['parent_id'] = $updates['parent_id'] === '' || $updates['parent_id'] === null ? null : (int) $updates['parent_id'];
+        }
         if (! empty($updates)) {
             // Store old values before update for tracking changes
             $oldValues = [
@@ -136,17 +167,20 @@ class ItemController extends Controller
                 'description' => $item->description,
                 'repro_steps' => $item->repro_steps,
                 'assignee_id' => $item->assignee_id,
+                'dev_tag' => $item->dev_tag,
+                'parent_id' => $item->parent_id,
             ];
-            
+
             $oldAssigneeId = $item->assignee_id;
             $oldGroupId = $item->group_id;
-            
+            $oldParentRow = $item->parent_id ? Item::find($item->parent_id) : null;
+
             $item->update($updates);
             $item->refresh();
-            
+
             // Track changes and create activity records
             $user = $request->user();
-            
+
             // Track name changes
             if (isset($updates['name']) && $oldValues['name'] !== $updates['name']) {
                 ItemActivity::create([
@@ -158,12 +192,12 @@ class ItemController extends Controller
                     'new_value' => $updates['name'],
                 ]);
             }
-            
+
             // Track status/group changes
             if (isset($updates['group_id']) && $oldGroupId != $updates['group_id']) {
                 $oldGroup = $oldGroupId ? \App\Models\Group::find($oldGroupId) : null;
                 $newGroup = $updates['group_id'] ? \App\Models\Group::find($updates['group_id']) : null;
-                
+
                 ItemActivity::create([
                     'item_id' => $item->id,
                     'user_id' => $user->id,
@@ -173,7 +207,7 @@ class ItemController extends Controller
                     'new_value' => $newGroup ? $newGroup->name : 'Unassigned',
                 ]);
             }
-            
+
             // Track type changes
             if (isset($updates['item_type']) && $oldValues['item_type'] !== $updates['item_type']) {
                 ItemActivity::create([
@@ -185,7 +219,7 @@ class ItemController extends Controller
                     'new_value' => $updates['item_type'],
                 ]);
             }
-            
+
             // Track description changes
             if (isset($updates['description']) && $oldValues['description'] !== $updates['description']) {
                 ItemActivity::create([
@@ -197,7 +231,7 @@ class ItemController extends Controller
                     'new_value' => $updates['description'],
                 ]);
             }
-            
+
             // Track repro_steps changes
             if (isset($updates['repro_steps']) && $oldValues['repro_steps'] !== $updates['repro_steps']) {
                 ItemActivity::create([
@@ -209,12 +243,12 @@ class ItemController extends Controller
                     'new_value' => $updates['repro_steps'],
                 ]);
             }
-            
+
             // Track assignee changes
             if (isset($updates['assignee_id']) && $oldAssigneeId != $updates['assignee_id']) {
                 $oldAssignee = $oldAssigneeId ? \App\Models\User::find($oldAssigneeId) : null;
                 $newAssignee = $updates['assignee_id'] ? \App\Models\User::find($updates['assignee_id']) : null;
-                
+
                 ItemActivity::create([
                     'item_id' => $item->id,
                     'user_id' => $user->id,
@@ -223,7 +257,7 @@ class ItemController extends Controller
                     'old_value' => $oldAssignee ? $oldAssignee->name : 'Unassigned',
                     'new_value' => $newAssignee ? $newAssignee->name : 'Unassigned',
                 ]);
-                
+
                 // Send assignment notification if assignee changed and is not the person assigning
                 if ($updates['assignee_id'] != null) {
                     $item->load('assignee');
@@ -270,16 +304,39 @@ class ItemController extends Controller
                     ]);
                 }
             }
-            
+
+            if (array_key_exists('dev_tag', $updates) && ($oldValues['dev_tag'] ?? null) !== ($updates['dev_tag'] ?? null)) {
+                ItemActivity::create([
+                    'item_id' => $item->id,
+                    'user_id' => $user->id,
+                    'type' => 'updated',
+                    'field' => 'dev_tag',
+                    'old_value' => $oldValues['dev_tag'] ? Item::devTagLabel($oldValues['dev_tag']) : null,
+                    'new_value' => ($updates['dev_tag'] ?? null) ? Item::devTagLabel($updates['dev_tag']) : null,
+                ]);
+            }
+
+            if (array_key_exists('parent_id', $updates) && (int) ($oldValues['parent_id'] ?? 0) !== (int) ($updates['parent_id'] ?? 0)) {
+                $newParentRow = ($updates['parent_id'] ?? null) ? Item::find($updates['parent_id']) : null;
+                ItemActivity::create([
+                    'item_id' => $item->id,
+                    'user_id' => $user->id,
+                    'type' => 'updated',
+                    'field' => 'parent_id',
+                    'old_value' => Item::formatParentRef($oldParentRow),
+                    'new_value' => Item::formatParentRef($newParentRow),
+                ]);
+            }
+
             // Check for mentions in description or repro_steps
             $mentionService = app(MentionService::class);
             $board->load('users');
-            
-            if (isset($updates['description']) && !empty($updates['description'])) {
+
+            if (isset($updates['description']) && ! empty($updates['description'])) {
                 $this->sendMentionNotifications($mentionService, $board, $item, $updates['description'], 'description', $user);
             }
-            
-            if (isset($updates['repro_steps']) && !empty($updates['repro_steps'])) {
+
+            if (isset($updates['repro_steps']) && ! empty($updates['repro_steps'])) {
                 $this->sendMentionNotifications($mentionService, $board, $item, $updates['repro_steps'], 'repro_steps', $user);
             }
         }
@@ -287,6 +344,7 @@ class ItemController extends Controller
         if (request()->has('return_item')) {
             return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])->with('success', 'Item updated.');
         }
+
         return redirect()->route('boards.show', ['board' => $board->id, 'view' => request('view', $board->view_type)])->with('success', 'Item updated.');
     }
 
@@ -300,6 +358,7 @@ class ItemController extends Controller
         if ($request->wantsJson()) {
             return response()->json(['ok' => true]);
         }
+
         return redirect()->route('boards.show', ['board' => $board, 'view' => 'kanban'])->with('success', 'Item moved.');
     }
 
@@ -312,6 +371,7 @@ class ItemController extends Controller
         if ($request->wantsJson()) {
             return response()->json(['ok' => true]);
         }
+
         return redirect()->route('boards.show', ['board' => $board, 'view' => request('view', $board->view_type)])
             ->with('success', 'Item deleted.');
     }
@@ -327,12 +387,12 @@ class ItemController extends Controller
             'user_id' => $request->user()->id,
             'body' => $validated['body'],
         ]);
-        
+
         // Check for mentions in comment
         $mentionService = app(MentionService::class);
         $board->load('users');
         $this->sendMentionNotifications($mentionService, $board, $item, $validated['body'], 'comment', $request->user());
-        
+
         return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])
             ->with('success', 'Comment added.');
     }
@@ -343,6 +403,7 @@ class ItemController extends Controller
             abort(404);
         }
         $comment->delete();
+
         return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])
             ->with('success', 'Comment deleted.');
     }
@@ -358,8 +419,8 @@ class ItemController extends Controller
         if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
             $ext = 'jpg';
         }
-        $name = Str::random(8) . '.' . $ext;
-        $path = 'item-attachments/' . $item->id . '/' . $name;
+        $name = Str::random(8).'.'.$ext;
+        $path = 'item-attachments/'.$item->id.'/'.$name;
 
         $optimized = $this->optimizeImage($file->getRealPath(), $ext);
         $content = $optimized ?? file_get_contents($file->getRealPath());
@@ -369,6 +430,7 @@ class ItemController extends Controller
         $attachments = $item->attachments ?? [];
         $attachments[] = $path;
         $item->update(['attachments' => $attachments]);
+
         return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])
             ->with('success', 'Image added.');
     }
@@ -398,6 +460,7 @@ class ItemController extends Controller
         $height = imagesy($image);
         if ($width < 1 || $height < 1) {
             imagedestroy($image);
+
             return null;
         }
 
@@ -408,6 +471,7 @@ class ItemController extends Controller
             $resized = imagecreatetruecolor($newWidth, $newHeight);
             if ($resized === false) {
                 imagedestroy($image);
+
                 return null;
             }
             if ($ext === 'png' || $ext === 'gif') {
@@ -451,6 +515,7 @@ class ItemController extends Controller
         Storage::disk('public')->delete($path);
         $attachments = array_values(array_filter($attachments, fn ($p) => $p !== $path));
         $item->update(['attachments' => $attachments]);
+
         return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])
             ->with('success', 'Image removed.');
     }
@@ -461,51 +526,51 @@ class ItemController extends Controller
     private function sendMentionNotifications(MentionService $mentionService, Board $board, Item $item, string $content, string $contentType, User $mentionedBy): void
     {
         // Check if Microsoft Graph credentials are configured
-        if (!config('services.microsoft.client_id') || !config('services.microsoft.client_secret')) {
+        if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {
             return; // Microsoft Graph not configured
         }
-        
+
         $mentionedUserIds = $mentionService->extractMentions($content, $board);
-        
+
         if (empty($mentionedUserIds)) {
             return;
         }
-        
+
         // Don't notify the person who made the mention
-        $mentionedUserIds = array_filter($mentionedUserIds, fn($id) => $id !== $mentionedBy->id);
-        
+        $mentionedUserIds = array_filter($mentionedUserIds, fn ($id) => $id !== $mentionedBy->id);
+
         if (empty($mentionedUserIds)) {
             return;
         }
-        
+
         $mentionedUsers = User::whereIn('id', $mentionedUserIds)->get();
-        
+
         // Send via Microsoft Graph API
         $this->sendViaMicrosoftGraph($mentionedUsers, $mentionedBy, $item, $board, $content, $contentType);
     }
-    
+
     /**
      * Send emails via Microsoft Graph API
      */
     private function sendViaMicrosoftGraph($mentionedUsers, User $mentionedBy, Item $item, Board $board, string $content, string $contentType): void
     {
         $graphService = app(\App\Services\MicrosoftGraphMailService::class);
-        
+
         // Render email HTML
         $preview = mb_substr(strip_tags($content), 0, 200);
         if (mb_strlen($content) > 200) {
             $preview .= '...';
         }
-        
+
         $itemType = $item->isBug() ? 'Bug' : 'Task';
         $itemUrl = route('boards.show.item', [
             'board' => $board->id,
             'item' => $item->number,
             'view' => $board->view_type,
         ]);
-        
+
         $htmlBody = view('emails.mention', [
-            'mentionedUser' => (object)['name' => 'User'],
+            'mentionedUser' => (object) ['name' => 'User'],
             'mentionedBy' => $mentionedBy,
             'item' => $item,
             'board' => $board,
@@ -513,9 +578,9 @@ class ItemController extends Controller
             'contentType' => $contentType,
             'itemUrl' => $itemUrl,
         ])->render();
-        
+
         $subject = "You were mentioned in {$itemType} #{$item->number}";
-        
+
         foreach ($mentionedUsers as $mentionedUser) {
             try {
                 $success = $graphService->sendEmail(
@@ -523,72 +588,70 @@ class ItemController extends Controller
                     $subject,
                     $htmlBody
                 );
-                
+
                 if (! $success) {
                     \Log::error("Failed to send mention notification via Microsoft Graph to: {$mentionedUser->email}");
                 }
             } catch (\Exception $e) {
-                \Log::error('Failed to send mention notification via Microsoft Graph: ' . $e->getMessage());
+                \Log::error('Failed to send mention notification via Microsoft Graph: '.$e->getMessage());
             }
         }
     }
-    
+
     /**
      * Send assignment notification email
      */
     private function sendAssignmentNotification(Item $item, Board $board, User $assignedBy): void
     {
         // Check if Microsoft Graph credentials are configured
-        if (!config('services.microsoft.client_id') || !config('services.microsoft.client_secret')) {
+        if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {
             return; // Microsoft Graph not configured
         }
-        
+
         // Don't send email if assigning to self
         if ($item->assignee_id === $assignedBy->id) {
             return;
         }
-        
+
         // Ensure assignee is loaded
-        if (!$item->relationLoaded('assignee')) {
+        if (! $item->relationLoaded('assignee')) {
             $item->load('assignee');
         }
-        
-        if (!$item->assignee || !$item->assignee->email) {
+
+        if (! $item->assignee || ! $item->assignee->email) {
             return;
         }
-        
+
         $graphService = app(\App\Services\MicrosoftGraphMailService::class);
-        
+
         $itemType = $item->isBug() ? 'Bug' : 'Task';
         $itemUrl = route('boards.show.item', [
             'board' => $board->id,
             'item' => $item->number,
             'view' => $board->view_type,
         ]);
-        
+
         $htmlBody = view('emails.assignment', [
             'assignedBy' => $assignedBy,
             'item' => $item,
             'board' => $board,
             'itemUrl' => $itemUrl,
         ])->render();
-        
+
         $subject = "You were assigned to {$itemType} #{$item->number}";
-        
+
         try {
             $success = $graphService->sendEmail(
                 $item->assignee->email,
                 $subject,
                 $htmlBody
             );
-            
+
             if (! $success) {
                 \Log::error("Failed to send assignment notification via Microsoft Graph to: {$item->assignee->email}");
             }
         } catch (\Exception $e) {
-            \Log::error('Failed to send assignment notification via Microsoft Graph: ' . $e->getMessage());
+            \Log::error('Failed to send assignment notification via Microsoft Graph: '.$e->getMessage());
         }
     }
-    
-
 }

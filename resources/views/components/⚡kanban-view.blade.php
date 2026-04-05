@@ -16,21 +16,23 @@ new class extends Component
     /** @var array<int> Filter by status/group IDs — only show these columns (empty = all) */
     public array $filterGroupIds = [];
 
+    /** From parent; parent uses wire:key including this value so each change remounts with correct filter. */
     public string $filterSearch = '';
 
-    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = []): void
+    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = [], string $filterSearch = ''): void
     {
         $this->boardId = $boardId;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
         $this->filterGroupIds = $filterGroupIds;
+        $this->filterSearch = $filterSearch;
     }
 
     public function getBoardProperty(): ?Board
     {
         $groupsQuery = fn ($q) => $q->orderBy('position')->when(! empty($this->filterGroupIds), fn ($sub) => $sub->whereIn('id', $this->filterGroupIds))->with(['items' => function ($q) {
-            $q->orderBy('position')->limit(150)->with('assignee');
+            $q->orderBy('position')->limit(150)->with('assignee')->withCount('children');
             if ($this->filterUnassigned) {
                 $q->whereNull('assignee_id');
             } elseif ($this->filterAssigneeId !== null) {
@@ -63,13 +65,6 @@ new class extends Component
     $board = $this->board;
 @endphp
 @if($board)
-<div class="space-y-2">
-    <div class="flex items-center gap-2">
-        <input type="text" wire:model.live.debounce.300ms="filterSearch" placeholder="Search by name or #number..." class="w-64 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-        @if($filterSearch !== '')
-            <button type="button" wire:click="$set('filterSearch', '')" class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100">Clear</button>
-        @endif
-    </div>
 <div class="js-kanban-board flex h-[calc(100vh-16rem)] max-h-[calc(100vh-16rem)] min-h-[420px] flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 bg-gray-900" data-board-id="{{ $board->id }}">
     <div class="flex min-h-0 flex-1">
         @foreach($board->groups as $index => $group)
@@ -106,14 +101,23 @@ new class extends Component
                             data-delete-url="{{ route('items.destroy', [$board, $item]) }}"
                         >
                             <div class="flex items-start justify-between gap-1.5">
-                                <a href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" class="js-kanban-open-item flex min-w-0 flex-1 items-baseline gap-1 text-sm text-gray-200 hover:text-white hover:underline focus:outline-none focus:bg-transparent" data-item-id="{{ $item->id }}" title="{{ $item->name }}" onclick="event.stopPropagation()" draggable="false"><span class="shrink-0 text-gray-500">#{{ $item->number }}</span><span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></a>
-                                <button type="button" class="js-kanban-delete flex-shrink-0 rounded p-0.5 text-gray-500 hover:text-red-400" title="Delete" aria-label="Delete" draggable="false">&#215;</button>
+                                <button type="button" class="js-kanban-open-item flex min-w-0 flex-1 items-baseline gap-1 text-left text-sm text-gray-200 hover:text-white hover:underline focus:outline-none focus:bg-transparent" data-item-id="{{ $item->id }}" data-href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" title="{{ $item->name }}"><span class="shrink-0 text-gray-500">#{{ $item->number }}</span>@if($item->parent_id)<span class="shrink-0 text-gray-500" title="Has parent">↳</span>@endif<span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></button>
+                                <button type="button" class="js-kanban-delete flex-shrink-0 rounded p-0.5 text-gray-500 hover:text-red-400" title="Delete" aria-label="Delete">&#215;</button>
                             </div>
                             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                 @if($item->item_type === 'bug')
                                     <span class="text-red-400">Bug</span>
                                 @else
                                     <span class="text-amber-400">Task</span>
+                                @endif
+                                @if($item->dev_tag)
+                                    @php $devTagLabel = \App\Models\Item::devTagLabel($item->dev_tag); @endphp
+                                    @if($devTagLabel)
+                                        <span class="rounded bg-violet-500/25 px-1.5 py-px text-violet-200">{{ $devTagLabel }}</span>
+                                    @endif
+                                @endif
+                                @if(($item->children_count ?? 0) > 0)
+                                    <span class="text-gray-500" title="Sub-items">{{ $item->children_count }} sub</span>
                                 @endif
                                 @if(($item->priority ?? 'medium') === 'critical' || ($item->priority ?? 'medium') === 'high')
                                     <span class="rounded px-1 {{ ($item->priority ?? '') === 'critical' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300' }}">{{ ucfirst($item->priority ?? '') }}</span>
@@ -131,7 +135,7 @@ new class extends Component
                                     @endphp
                                     <div class="flex items-center gap-1.5">
                                         <div class="relative h-4 w-4 shrink-0 overflow-hidden rounded-full bg-gray-500">
-                                            <img src="{{ $photoUrl }}" alt="{{ $assignee->name }}" class="h-full w-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                            <img src="{{ $photoUrl }}" alt="{{ $assignee->name }}" draggable="false" class="h-full w-full object-cover select-none" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                                             <div class="hidden h-full w-full items-center justify-center bg-gray-600 text-[10px] font-medium text-white">
                                                 {{ $initials }}
                                             </div>
@@ -149,7 +153,6 @@ new class extends Component
         @endforeach
     </div>
 </div>
-</div>
 @else
 <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">Board not found.</div>
 @endif
@@ -163,8 +166,9 @@ new class extends Component
         if (document.body.hasAttribute('data-kanban-dnd')) return;
         document.body.setAttribute('data-kanban-dnd', '1');
         document.addEventListener('dragstart', function(e) {
-            var card = e.target.closest('.kanban-item');
-            if (!card || !card.draggable) return;
+            var card = e.target.closest && e.target.closest('.kanban-item');
+            if (!card || card.getAttribute('draggable') !== 'true') return;
+            if (e.target.tagName === 'IMG') return;
             draggedCard = card;
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', card.getAttribute('data-item-id') || '');
@@ -223,7 +227,7 @@ new class extends Component
         }, true);
 
         document.addEventListener('click', function(e) {
-            var openLink = e.target.closest('a.js-kanban-open-item');
+            var openLink = e.target.closest('.js-kanban-open-item');
             if (openLink) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -231,7 +235,8 @@ new class extends Component
                 if (itemId && window.dispatchEvent) {
                     window.dispatchEvent(new CustomEvent('open-item', { detail: { itemId: parseInt(itemId, 10) } }));
                 }
-                if (history.replaceState && openLink.href) history.replaceState({}, '', openLink.href);
+                var href = openLink.getAttribute('data-href') || (openLink.href ? openLink.href : '');
+                if (history.replaceState && href) history.replaceState({}, '', href);
                 if (openLink.blur) openLink.blur();
                 return;
             }
