@@ -59,6 +59,11 @@ class User extends Authenticatable
         return $this->belongsToMany(Board::class)->withTimestamps();
     }
 
+    public function sheets(): BelongsToMany
+    {
+        return $this->belongsToMany(Sheet::class)->withTimestamps();
+    }
+
     /**
      * Get profile picture URL from Microsoft Graph
      */

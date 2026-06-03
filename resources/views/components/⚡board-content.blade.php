@@ -255,6 +255,8 @@ new class extends Component
                 'filterSearch' => $filterSearch,
             ], key('kanban-'.$boardId.'-'.md5($filterSearch)))
         </div>
+        {{-- White space below the board so the bottom edge is clearly visible --}}
+        <div class="min-h-[min(160px,20vh)] shrink-0" aria-hidden="true"></div>
     @endif
 
     @if($selectedItemId)

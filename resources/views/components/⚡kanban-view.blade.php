@@ -65,8 +65,8 @@ new class extends Component
     $board = $this->board;
 @endphp
 @if($board)
-<div class="js-kanban-board flex h-[calc(100vh-16rem)] max-h-[calc(100vh-16rem)] min-h-[420px] flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 bg-gray-900" data-board-id="{{ $board->id }}">
-    <div class="flex min-h-0 flex-1">
+<div class="js-kanban-board flex h-[calc(100vh-22rem)] max-h-[calc(100vh-22rem)] min-h-[340px] flex-col overflow-x-scroll overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]" data-board-id="{{ $board->id }}">
+    <div class="flex min-h-0 min-w-max flex-1">
         @foreach($board->groups as $index => $group)
             <div
                 class="kanban-column flex min-h-0 min-w-[200px] flex-1 flex-col border-r border-gray-700 last:border-r-0"
@@ -270,3 +270,27 @@ new class extends Component
 })();
 </script>
 @endif
+
+<style>
+.js-kanban-board {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(107 114 128) rgb(17 24 39);
+}
+
+.js-kanban-board::-webkit-scrollbar {
+    height: 10px;
+}
+
+.js-kanban-board::-webkit-scrollbar-track {
+    background: rgb(17 24 39);
+}
+
+.js-kanban-board::-webkit-scrollbar-thumb {
+    background: rgb(75 85 99);
+    border-radius: 9999px;
+}
+
+.js-kanban-board::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+}
+</style>

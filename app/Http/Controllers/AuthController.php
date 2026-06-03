@@ -78,6 +78,12 @@ class AuthController extends Controller
 
         try {
             $microsoftUser = $provider->user();
+        } catch (\Laravel\Socialite\Two\InvalidStateException $e) {
+            // Session/state mismatch (e.g. expired session, stale cookie, or the
+            // login tab sat idle too long). Send the user back to retry cleanly
+            // instead of showing a 500 error.
+            return redirect()->route('login')
+                ->withErrors(['microsoft' => 'Your sign-in session expired. Please try signing in again.']);
         } catch (ClientException $e) {
             $body = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : '';
             $data = json_decode($body, true);

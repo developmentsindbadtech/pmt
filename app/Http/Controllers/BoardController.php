@@ -127,12 +127,11 @@ class BoardController extends Controller
             }
         }
 
-        // Eager load all relationships in one query
-        $board->load([
-            'columns' => fn ($q) => $q->orderBy('position'),
-            'groups' => fn ($q) => $q->orderBy('position'),
-            'items.itemColumnValues.column',
-        ]);
+        // NOTE: Items/columns/groups are fetched on demand by the Kanban/List
+        // Livewire components. The boards.show view only needs the board id and
+        // resolved filters, so we intentionally avoid eager-loading every item
+        // and its column values here (that was loading the whole board on each
+        // page render and was the main source of slowness).
 
         // Resolve filters: query params override saved per-user filters
         $saved = UserBoardFilter::where('user_id', $user->id)->where('board_id', $board->id)->first();
@@ -182,12 +181,8 @@ class BoardController extends Controller
                 ->with('error', 'Task not found.');
         }
 
-        // Eager load all relationships in one query
-        $board->load([
-            'columns' => fn ($q) => $q->orderBy('position'),
-            'groups' => fn ($q) => $q->orderBy('position'),
-            'items.itemColumnValues.column',
-        ]);
+        // NOTE: see show() — item/column/group data is loaded by the Livewire
+        // components, so we don't eager-load the whole board here.
 
         // Resolve filters: query params override saved per-user filters
         $saved = UserBoardFilter::where('user_id', $user->id)->where('board_id', $board->id)->first();

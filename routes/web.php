@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BoardController;
 use App\Http\Controllers\ItemController;
+use App\Http\Controllers\SheetController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,7 @@ Route::get('/auth/microsoft/callback', [AuthController::class, 'handleMicrosoftC
 Route::middleware(['auth'])->group(function () {
     Route::get('/user-management', [UserManagementController::class, 'index'])->name('user-management.index');
     Route::put('/user-management/boards/{board}', [UserManagementController::class, 'update'])->name('user-management.update');
+    Route::put('/user-management/sheets/{sheet}', [UserManagementController::class, 'updateSheet'])->name('user-management.update-sheet');
     Route::get('/boards', [BoardController::class, 'index'])->name('boards.index');
     Route::get('/boards/create', [BoardController::class, 'create'])->name('boards.create');
     Route::post('/boards', [BoardController::class, 'store'])->name('boards.store');
@@ -43,4 +45,11 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/boards/{board}/items/{item}/attachments', [ItemController::class, 'deleteAttachment'])->name('items.attachments.destroy');
     Route::post('/boards/{board}/items/{item}/comments', [ItemController::class, 'storeComment'])->name('items.comments.store');
     Route::delete('/boards/{board}/items/{item}/comments/{comment}', [ItemController::class, 'destroyComment'])->name('items.comments.destroy');
+
+    // Sheets: monday.com-style flexible data grid (separate section)
+    Route::get('/sheets', [SheetController::class, 'index'])->name('sheets.index');
+    Route::get('/sheets/create', [SheetController::class, 'create'])->name('sheets.create');
+    Route::post('/sheets', [SheetController::class, 'store'])->name('sheets.store');
+    Route::get('/sheets/{sheet}', [SheetController::class, 'show'])->name('sheets.show');
+    Route::delete('/sheets/{sheet}', [SheetController::class, 'destroy'])->name('sheets.destroy');
 });

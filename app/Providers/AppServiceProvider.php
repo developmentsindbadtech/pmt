@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Board;
+use App\Models\Sheet;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -38,9 +39,23 @@ class AppServiceProvider extends ServiceProvider
                     ->get(['id', 'name']));
                 $board = request()->route('board');
                 $view->with('currentBoardId', $board ? $board->id : null);
+
+                $sheetQuery = Sheet::query();
+                if (! $user->is_admin) {
+                    $sheetQuery->whereHas('users', function ($q) use ($user) {
+                        $q->where('users.id', $user->id);
+                    });
+                }
+                $view->with('sidebarSheets', $sheetQuery->orderBy('name', 'asc')
+                    ->limit(30)
+                    ->get(['id', 'name']));
+                $sheet = request()->route('sheet');
+                $view->with('currentSheetId', $sheet ? $sheet->id : null);
             } else {
                 $view->with('sidebarBoards', collect());
                 $view->with('currentBoardId', null);
+                $view->with('sidebarSheets', collect());
+                $view->with('currentSheetId', null);
             }
         });
     }
