@@ -9,6 +9,23 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
+        <style>
+            /* Accessibility: always show a clear focus ring for keyboard users. */
+            :focus-visible {
+                outline: 2px solid #3b82f6;
+                outline-offset: 2px;
+                border-radius: 4px;
+            }
+            /* Respect users who prefer reduced motion. */
+            @media (prefers-reduced-motion: reduce) {
+                *, *::before, *::after {
+                    animation-duration: 0.001ms !important;
+                    animation-iteration-count: 1 !important;
+                    transition-duration: 0.001ms !important;
+                    scroll-behavior: auto !important;
+                }
+            }
+        </style>
     </head>
     <body class="min-h-screen bg-white text-gray-900 antialiased overflow-hidden">
         <div class="relative z-10" x-data="sidebar()">
@@ -128,7 +145,7 @@
                 </aside>
 
                 {{-- Main content: offset by sidebar width --}}
-                <main class="h-[calc(100vh-3.5rem)] flex-1 overflow-hidden py-6 transition-[margin-left] duration-200 ease-in-out" :style="{ marginLeft: expanded ? '14rem' : '3.5rem' }">
+                <main class="h-[calc(100vh-3.5rem)] min-w-0 flex-1 overflow-hidden py-6 transition-[margin-left] duration-200 ease-in-out" :style="{ marginLeft: expanded ? '14rem' : '3.5rem' }">
                     @hasSection('content')
                         @yield('content')
                     @else

@@ -17,6 +17,13 @@ class SmokeEvaluationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Tests should not depend on a compiled Vite manifest / running dev server.
+        $this->withoutVite();
+    }
+
     private function admin(): User
     {
         return User::factory()->create(['is_admin' => true]);

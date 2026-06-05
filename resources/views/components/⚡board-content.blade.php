@@ -70,6 +70,20 @@ new class extends Component
         $this->filterSearch = '';
     }
 
+    public function renameBoard(string $name): void
+    {
+        // Only admins manage board structure (create/delete/rename).
+        if (! auth()->user()?->is_admin) {
+            return;
+        }
+        $name = trim($name);
+        if ($name === '') {
+            return;
+        }
+        Board::whereKey($this->boardId)->update(['name' => mb_substr($name, 0, 255)]);
+        unset($this->board);
+    }
+
     public function getBoardProperty(): ?Board
     {
         return Board::with(['columns' => fn ($q) => $q->orderBy('position'), 'groups', 'users'])
@@ -129,7 +143,20 @@ new class extends Component
     <div class="mb-4 flex items-center justify-between">
         <div>
             <a href="{{ route('boards.index') }}" class="text-sm text-gray-500 hover:text-gray-700">&larr; Boards</a>
-            <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $board?->name }}</h1>
+            @if($board && auth()->user()?->is_admin)
+                <div x-data="{ editing: false }" class="mt-1">
+                    <h1 x-show="!editing" @click="editing = true; $nextTick(() => { $refs.boardTitle.focus(); $refs.boardTitle.select(); })" class="-mx-1 cursor-text rounded px-1 text-2xl font-semibold text-gray-900 hover:bg-gray-100" title="Click to rename board">{{ $board->name }}</h1>
+                    <input
+                        x-show="editing" x-cloak x-ref="boardTitle" type="text" value="{{ $board->name }}"
+                        @keydown.enter.prevent="$refs.boardTitle.blur()"
+                        @keydown.escape="editing = false"
+                        @blur="editing = false; $wire.renameBoard($refs.boardTitle.value)"
+                        class="-mx-1 w-full max-w-md rounded border border-gray-300 px-1 text-2xl font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                </div>
+            @else
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $board?->name }}</h1>
+            @endif
             @if ($board?->description)
                 <p class="mt-1 text-sm text-gray-500">{{ $board->description }}</p>
             @endif

@@ -39,6 +39,16 @@ new class extends Component
         $this->sortDir = 'asc';
     }
 
+    public function renameSheet($name): void
+    {
+        // Anyone who can open the sheet (access enforced in mount) may rename it.
+        $name = trim((string) $name);
+        if ($name === '') {
+            return;
+        }
+        Sheet::whereKey($this->sheetId)->update(['name' => mb_substr($name, 0, 255)]);
+    }
+
     public function mount(int $sheetId): void
     {
         $this->sheetId = $sheetId;
@@ -176,6 +186,7 @@ new class extends Component
 
         $values = $row->values ?? [];
         $key = (string) $columnId;
+        $oldValue = $values[$key] ?? null;
 
         if ($col->type === 'checkbox') {
             $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
@@ -188,6 +199,55 @@ new class extends Component
 
         $row->values = $values;
         $row->save();
+
+        // Notify the newly assigned person when a "person" cell changes to a
+        // different, non-empty user (mirrors board assignee notifications).
+        if ($col->type === 'person') {
+            $newValue = $values[$key] ?? null;
+            if ($newValue && (string) $newValue !== (string) $oldValue) {
+                $this->notifySheetAssignment((int) $newValue, $col->name);
+            }
+        }
+    }
+
+    private function notifySheetAssignment(int $assigneeId, string $columnName): void
+    {
+        if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {
+            return;
+        }
+
+        $assignedBy = auth()->user();
+        if ($assignedBy && $assignedBy->id === $assigneeId) {
+            return; // don't notify yourself
+        }
+
+        $assignee = User::find($assigneeId);
+        if (! $assignee || ! $assignee->email) {
+            return;
+        }
+
+        $sheet = Sheet::find($this->sheetId);
+        if (! $sheet) {
+            return;
+        }
+
+        try {
+            $html = view('emails.sheet-assignment', [
+                'assignedBy' => $assignedBy,
+                'assignee' => $assignee,
+                'sheet' => $sheet,
+                'columnName' => $columnName,
+                'sheetUrl' => route('sheets.show', $sheet),
+            ])->render();
+
+            app(\App\Services\MicrosoftGraphMailService::class)->sendEmail(
+                $assignee->email,
+                'You were assigned on the sheet "'.$sheet->name.'"',
+                $html
+            );
+        } catch (\Throwable $e) {
+            \Log::error('Failed to send sheet assignment notification: '.$e->getMessage());
+        }
     }
 };
 ?>
@@ -247,6 +307,18 @@ new class extends Component
 <div>
     @if($sheet)
     <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-black/5">
+        <div class="border-b border-gray-100 px-4 py-3">
+            <div x-data="{ editing: false }" class="min-w-0">
+                <h2 x-show="!editing" @click="editing = true; $nextTick(() => { $refs.sheetTitle.focus(); $refs.sheetTitle.select(); })" class="-mx-1 inline-block max-w-full cursor-text truncate rounded px-1 text-lg font-semibold text-gray-900 hover:bg-gray-100" title="Click to rename sheet">{{ $sheet->name }}</h2>
+                <input
+                    x-show="editing" x-cloak x-ref="sheetTitle" type="text" value="{{ $sheet->name }}"
+                    @keydown.enter.prevent="$refs.sheetTitle.blur()"
+                    @keydown.escape="editing = false"
+                    @blur="editing = false; $wire.renameSheet($refs.sheetTitle.value)"
+                    class="-mx-1 w-full max-w-md rounded border border-gray-300 px-1 text-lg font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+            </div>
+        </div>
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-2.5">
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" wire:click="addRow" class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40">
@@ -315,9 +387,10 @@ new class extends Component
                                         wire:click="sortBy({{ $col->id }})"
                                         class="shrink-0 rounded p-0.5 text-sm leading-none {{ $sortColId === $col->id ? 'text-blue-600' : 'text-gray-400 hover:bg-white hover:text-gray-700' }}"
                                         title="Sort by {{ $col->name }}"
+                                        aria-label="Sort by {{ $col->name }}"
                                     >{{ $sortColId === $col->id ? ($sortDir === 'asc' ? '↑' : '↓') : '↕' }}</button>
                                     <span class="shrink-0 rounded bg-gray-200/70 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-gray-500">{{ $col->type }}</span>
-                                    <button type="button" wire:click="deleteColumn({{ $col->id }})" wire:confirm="Delete this column?" class="shrink-0 rounded p-0.5 text-gray-300 opacity-0 transition hover:bg-white hover:text-red-600 group-hover/col:opacity-100" title="Delete column">
+                                    <button type="button" wire:click="deleteColumn({{ $col->id }})" wire:confirm="Delete this column?" class="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition hover:bg-white hover:text-red-600 group-hover/col:opacity-100" title="Delete column" aria-label="Delete column {{ $col->name }}">
                                         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                     </button>
                                 </div>
@@ -341,20 +414,20 @@ new class extends Component
                                             Subtask
                                         </button>
                                     @endif
-                                    <button type="button" wire:click="deleteRow({{ $row->id }})" wire:confirm="@if($depth === 0)Delete this row and its subtasks?@else Delete this subtask?@endif" class="shrink-0 rounded p-0.5 text-gray-300 opacity-0 transition hover:bg-white hover:text-red-600 group-hover:opacity-100" title="Delete row">
+                                    <button type="button" wire:click="deleteRow({{ $row->id }})" wire:confirm="@if($depth === 0)Delete this row and its subtasks?@else Delete this subtask?@endif" class="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition hover:bg-white hover:text-red-600 group-hover:opacity-100" title="Delete row" aria-label="Delete row {{ $entry['label'] }}">
                                         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                     </button>
                                 </div>
                             </td>
                             @foreach($columns as $col)
                                 @php $cell = data_get($row->values, (string) $col->id); @endphp
-                                <td class="border-b border-r border-gray-100 px-1 py-1 align-middle" wire:key="cell-{{ $row->id }}-{{ $col->id }}">
+                                <td class="border-b border-r border-gray-100 px-1 py-0.5 align-middle" wire:key="cell-{{ $row->id }}-{{ $col->id }}">
                                     @switch($col->type)
                                         @case('number')
-                                            <input type="number" value="{{ $cell }}" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm tabular-nums text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                            <input type="number" value="{{ $cell }}" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-sm tabular-nums text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                                             @break
                                         @case('date')
-                                            <input type="date" value="{{ $cell }}" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                            <input type="date" value="{{ $cell }}" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                                             @break
                                         @case('checkbox')
                                             <div class="flex justify-center">
@@ -375,7 +448,7 @@ new class extends Component
                                             </select>
                                             @break
                                         @case('person')
-                                            <select wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+                                            <select wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-gray-900 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
                                                 <option value="">—</option>
                                                 @foreach($users as $u)
                                                     <option value="{{ $u->id }}" @selected((string) $cell === (string) $u->id)>{{ $u->name }}</option>
@@ -384,14 +457,14 @@ new class extends Component
                                             @break
                                         @case('link')
                                             <div class="flex items-center gap-1">
-                                                <input type="url" value="{{ $cell }}" placeholder="https://" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-blue-600 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                                <input type="url" value="{{ $cell }}" placeholder="https://" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-blue-600 transition hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                                                 @if($cell)
                                                     <a href="{{ $cell }}" target="_blank" rel="noopener" class="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600" title="Open link">↗</a>
                                                 @endif
                                             </div>
                                             @break
                                         @default
-                                            <input type="text" value="{{ $cell }}" placeholder="—" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-gray-900 transition placeholder:text-gray-300 hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                            <input type="text" value="{{ $cell }}" placeholder="—" wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-gray-900 transition placeholder:text-gray-300 hover:border-gray-200 hover:bg-gray-50 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
                                     @endswitch
                                 </td>
                             @endforeach

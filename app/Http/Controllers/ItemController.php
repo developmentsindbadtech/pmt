@@ -332,12 +332,15 @@ class ItemController extends Controller
             $mentionService = app(MentionService::class);
             $board->load('users');
 
-            if (isset($updates['description']) && ! empty($updates['description'])) {
-                $this->sendMentionNotifications($mentionService, $board, $item, $updates['description'], 'description', $user);
+            // Only notify on mentions when the content actually changed, and only
+            // for users who were NOT already mentioned in the previous version.
+            // (Previously this fired for every mentioned user on every save.)
+            if (array_key_exists('description', $updates) && ($oldValues['description'] ?? null) !== ($updates['description'] ?? null)) {
+                $this->sendMentionNotifications($mentionService, $board, $item, (string) ($updates['description'] ?? ''), 'description', $user, (string) ($oldValues['description'] ?? ''));
             }
 
-            if (isset($updates['repro_steps']) && ! empty($updates['repro_steps'])) {
-                $this->sendMentionNotifications($mentionService, $board, $item, $updates['repro_steps'], 'repro_steps', $user);
+            if (array_key_exists('repro_steps', $updates) && ($oldValues['repro_steps'] ?? null) !== ($updates['repro_steps'] ?? null)) {
+                $this->sendMentionNotifications($mentionService, $board, $item, (string) ($updates['repro_steps'] ?? ''), 'repro_steps', $user, (string) ($oldValues['repro_steps'] ?? ''));
             }
         }
 
@@ -523,7 +526,7 @@ class ItemController extends Controller
     /**
      * Send mention notifications to users
      */
-    private function sendMentionNotifications(MentionService $mentionService, Board $board, Item $item, string $content, string $contentType, User $mentionedBy): void
+    private function sendMentionNotifications(MentionService $mentionService, Board $board, Item $item, string $content, string $contentType, User $mentionedBy, string $previousContent = ''): void
     {
         // Check if Microsoft Graph credentials are configured
         if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {
@@ -534,6 +537,13 @@ class ItemController extends Controller
 
         if (empty($mentionedUserIds)) {
             return;
+        }
+
+        // Only notify users who are NEWLY mentioned (not already present in the
+        // previous version of the text) so editing/re-saving doesn't re-notify.
+        if ($previousContent !== '') {
+            $previousUserIds = $mentionService->extractMentions($previousContent, $board);
+            $mentionedUserIds = array_diff($mentionedUserIds, $previousUserIds);
         }
 
         // Don't notify the person who made the mention
