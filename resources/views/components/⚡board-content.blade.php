@@ -139,8 +139,8 @@ new class extends Component
     $item = $this->selectedItemId ? $this->item : null;
     $users = $board ? $this->users : collect();
 @endphp
-<div x-data x-on:open-item.window="$wire.openItem($event.detail.itemId)">
-    <div class="mb-4 flex items-center justify-between">
+<div x-data x-on:open-item.window="$wire.openItem($event.detail.itemId)" class="flex h-full flex-col">
+    <div class="mb-4 flex shrink-0 items-center justify-between">
         <div>
             <a href="{{ route('boards.index') }}" class="text-sm text-gray-500 hover:text-gray-700">&larr; Boards</a>
             @if($board && auth()->user()?->is_admin)
@@ -247,9 +247,9 @@ new class extends Component
     @if($view === 'table')
         @livewire('table-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
     @else
-        <div class="space-y-3 rounded-lg bg-gray-900 p-3 ring-1 ring-white/5">
+        <div class="flex min-h-0 flex-1 flex-col gap-3 rounded-lg bg-gray-900 p-3 ring-1 ring-white/5">
             @if($board)
-                <div class="flex flex-col gap-2 rounded-xl border border-gray-700/80 bg-gray-800/70 p-2 shadow-sm sm:flex-row sm:items-center">
+                <div class="flex shrink-0 flex-col gap-2 rounded-xl border border-gray-700/80 bg-gray-800/70 p-2 shadow-sm sm:flex-row sm:items-center">
                     <div class="relative min-w-0 flex-1">
                         <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -273,17 +273,17 @@ new class extends Component
                     >Clear</button>
                 </div>
             @endif
-            @livewire('kanban-view', [
-                'boardId' => $boardId,
-                'filterAssigneeId' => $filterAssigneeId,
-                'filterUnassigned' => $filterUnassigned,
-                'filterType' => $filterType,
-                'filterGroupIds' => $filterGroupIds,
-                'filterSearch' => $filterSearch,
-            ], key('kanban-'.$boardId.'-'.md5($filterSearch)))
+            <div class="flex min-h-0 flex-1 flex-col">
+                @livewire('kanban-view', [
+                    'boardId' => $boardId,
+                    'filterAssigneeId' => $filterAssigneeId,
+                    'filterUnassigned' => $filterUnassigned,
+                    'filterType' => $filterType,
+                    'filterGroupIds' => $filterGroupIds,
+                    'filterSearch' => $filterSearch,
+                ], key('kanban-'.$boardId.'-'.md5($filterSearch)))
+            </div>
         </div>
-        {{-- White space below the board so the bottom edge is clearly visible --}}
-        <div class="min-h-[min(160px,20vh)] shrink-0" aria-hidden="true"></div>
     @endif
 
     @if($selectedItemId)

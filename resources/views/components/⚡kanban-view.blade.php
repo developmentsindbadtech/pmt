@@ -65,7 +65,7 @@ new class extends Component
     $board = $this->board;
 @endphp
 @if($board)
-<div class="js-kanban-board flex h-[calc(100vh-22rem)] max-h-[calc(100vh-22rem)] min-h-[340px] w-full min-w-0 max-w-full flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]" data-board-id="{{ $board->id }}">
+<div class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]" data-board-id="{{ $board->id }}">
     <div class="flex min-h-0 min-w-full flex-1">
         @foreach($board->groups as $index => $group)
             <div
