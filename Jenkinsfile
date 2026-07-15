@@ -15,7 +15,7 @@ pipeline {
             }
         }
         stage('Deploy to Staging') {
-            when { branch 'develop' }
+            when { branch 'main' }
             steps {
                 sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
                     sh '''
