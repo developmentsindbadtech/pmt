@@ -25,6 +25,7 @@ pipeline {
                 }
             }
         }
+    }
     post {
         success {
             echo "✅ ${APP_NAME} deployed — branch: ${BRANCH_NAME}"
