@@ -39,6 +39,30 @@
                             </svg>
                             Sign in with Microsoft
                         </a>
+                    @elseif (app()->environment('local'))
+                        <div class="space-y-3">
+                            <form method="POST" action="{{ route('auth.local') }}">
+                                @csrf
+                                <input type="hidden" name="as" value="admin" />
+                                <button
+                                    type="submit"
+                                    class="flex w-full items-center justify-center gap-3 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-md transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                                >
+                                    Continue as Admin
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ route('auth.local') }}">
+                                @csrf
+                                <input type="hidden" name="as" value="user" />
+                                <button
+                                    type="submit"
+                                    class="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                                >
+                                    Continue as User
+                                </button>
+                            </form>
+                        </div>
+                        <p class="mt-3 text-center text-xs text-gray-500">Local only — use User to test the non-admin view.</p>
                     @else
                         <div class="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900 ring-1 ring-amber-200/60">
                             <p class="font-medium">Microsoft SSO is not configured</p>

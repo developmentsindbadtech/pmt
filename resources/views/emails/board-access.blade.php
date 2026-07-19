@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Board Access</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.5; color: #1f2937; background-color: #f9fafb; margin: 0; padding: 0;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb;">
+        <tr>
+            <td style="padding: 32px 16px;">
+                <table role="presentation" style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden;">
+                    <tr>
+                        <td style="padding: 20px 24px; text-align: center; background-color: #ffffff; border-bottom: 1px solid #e5e7eb;">
+                            <h1 style="margin: 0; font-size: 20px; font-weight: 600; color: #111827; line-height: 1.3;">
+                                Sindbad.Tech Project Management Tool
+                            </h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 24px 24px 20px; background-color: #ffffff; border-bottom: 1px solid #e5e7eb;">
+                            <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: #111827; line-height: 1.3;">
+                                You were given access to a Board
+                            </h2>
+                            <p style="margin: 6px 0 0; font-size: 13px; color: #6b7280;">
+                                {{ $grantedBy->name }} added you to "{{ $board->name }}".
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px 24px;">
+                            <span style="display: inline-block; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Board</span>
+                            <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #111827; line-height: 1.4;">
+                                {{ $board->name }}
+                            </h2>
+                            @if($board->description)
+                                <p style="margin: 8px 0 0; font-size: 14px; color: #374151;">{{ mb_substr($board->description, 0, 200) }}{{ mb_strlen($board->description) > 200 ? '…' : '' }}</p>
+                            @endif
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 24px 24px; text-align: center;">
+                            <a href="{{ $resourceUrl }}"
+                               style="display: inline-block; background-color: #3b82f6; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 500; font-size: 14px; line-height: 1.5;">
+                                Open Board
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+                <table role="presentation" style="max-width: 560px; margin: 24px auto 0;">
+                    <tr>
+                        <td style="text-align: center; padding: 0 16px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5;">
+                                This email was sent because you were granted access to this board.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

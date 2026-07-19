@@ -19,7 +19,8 @@ class BoardController extends Controller
     {
         $user = $request->user();
 
-        $query = Board::query()->withCount('items');
+        $query = Board::query()
+            ->withCount(['items as items_count' => fn ($q) => $q->whereNull('archived_at')]);
 
         // Admins see all boards, regular users only see assigned boards
         if (! $user->is_admin) {
@@ -32,7 +33,10 @@ class BoardController extends Controller
             ->limit(50)
             ->get();
 
-        return view('boards.index', ['boards' => $boards]);
+        return view('boards.index', [
+            'boards' => $boards,
+            'isAdmin' => (bool) $user->is_admin,
+        ]);
     }
 
     public function create(Request $request): View

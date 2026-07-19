@@ -379,6 +379,34 @@ class ItemController extends Controller
             ->with('success', 'Item deleted.');
     }
 
+    public function archive(Request $request, Board $board, Item $item): RedirectResponse|JsonResponse
+    {
+        if ($item->board_id !== $board->id) {
+            abort(404);
+        }
+        $item->archive();
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect()->route('boards.show', ['board' => $board, 'view' => request('view', $board->view_type)])
+            ->with('success', 'Item archived.');
+    }
+
+    public function unarchive(Request $request, Board $board, Item $item): RedirectResponse|JsonResponse
+    {
+        if ($item->board_id !== $board->id) {
+            abort(404);
+        }
+        $item->unarchive();
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect()->route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => request('view', $board->view_type)])
+            ->with('success', 'Item restored.');
+    }
+
     public function storeComment(Request $request, Board $board, Item $item): RedirectResponse
     {
         if ($item->board_id !== $board->id) {

@@ -29,10 +29,25 @@ new class extends Component
     /** @var array<int> Filter by status/group IDs — only show these columns (empty = all) */
     public array $filterGroupIds = [];
 
+    /** active (default) | archived */
+    public string $itemVisibility = 'active';
+
+    /** When active: hide items in Done/Closed columns (column stays for drop-to-complete). */
+    public bool $showDone = false;
+
     public string $activeTab = 'details';
 
-    public function mount(int $boardId, string $view = 'kanban', ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = [], ?int $selectedItemId = null): void
-    {
+    public function mount(
+        int $boardId,
+        string $view = 'kanban',
+        ?int $filterAssigneeId = null,
+        bool $filterUnassigned = false,
+        ?string $filterType = null,
+        array $filterGroupIds = [],
+        ?int $selectedItemId = null,
+        ?string $itemVisibility = null,
+        ?bool $showDone = null,
+    ): void {
         $this->boardId = $boardId;
         $this->view = $view;
         $this->filterAssigneeId = $filterAssigneeId;
@@ -41,6 +56,57 @@ new class extends Component
         $this->filterGroupIds = $filterGroupIds;
         // Use provided selectedItemId or check query parameter (backward compatibility)
         $this->selectedItemId = $selectedItemId ?? (request()->has('item') ? (int) request('item') : null);
+
+        // Restore Active/Archived + Show Done across Kanban/List navigations.
+        $sessionMode = session($this->visibilitySessionKey('mode'));
+        $sessionShowDone = session($this->visibilitySessionKey('show_done'));
+        $requestMode = request()->input('visibility', $itemVisibility);
+        $requestShowDone = request()->has('show_done')
+            ? filter_var(request()->input('show_done'), FILTER_VALIDATE_BOOLEAN)
+            : $showDone;
+
+        $this->itemVisibility = in_array($requestMode, ['active', 'archived'], true)
+            ? $requestMode
+            : (in_array($sessionMode, ['active', 'archived'], true) ? $sessionMode : 'active');
+        $this->showDone = $requestShowDone !== null
+            ? (bool) $requestShowDone
+            : (bool) ($sessionShowDone ?? false);
+
+        if ($this->itemVisibility === 'archived') {
+            $this->showDone = true;
+        }
+        $this->persistVisibility();
+    }
+
+    public function setItemVisibility(string $visibility): void
+    {
+        $this->itemVisibility = in_array($visibility, ['active', 'archived'], true) ? $visibility : 'active';
+        if ($this->itemVisibility === 'archived') {
+            $this->showDone = true;
+        }
+        $this->persistVisibility();
+    }
+
+    public function toggleShowDone(): void
+    {
+        if ($this->itemVisibility !== 'active') {
+            return;
+        }
+        $this->showDone = ! $this->showDone;
+        $this->persistVisibility();
+    }
+
+    private function visibilitySessionKey(string $suffix): string
+    {
+        return 'board.'.$this->boardId.'.visibility.'.$suffix;
+    }
+
+    private function persistVisibility(): void
+    {
+        session([
+            $this->visibilitySessionKey('mode') => $this->itemVisibility,
+            $this->visibilitySessionKey('show_done') => $this->showDone,
+        ]);
     }
     
     public function setTab(string $tab): void
@@ -207,20 +273,45 @@ new class extends Component
                 </form>
             </div>
             @endif
+            <div class="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 p-0.5">
+                <button type="button" wire:click="setItemVisibility('active')" class="rounded px-2.5 py-1 text-xs font-medium {{ $itemVisibility === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800' }}">Active</button>
+                <button type="button" wire:click="setItemVisibility('archived')" class="rounded px-2.5 py-1 text-xs font-medium {{ $itemVisibility === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800' }}">Archived</button>
+            </div>
+            @if($itemVisibility === 'active')
+                <button
+                    type="button"
+                    wire:click="toggleShowDone"
+                    class="rounded-md border px-2.5 py-1.5 text-xs font-medium {{ $showDone ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50' }}"
+                    title="{{ $showDone ? 'Hide items in Done columns' : 'Show items in Done columns' }}"
+                >{{ $showDone ? 'Hide Done' : 'Show Done' }}</button>
+            @endif
             @php
                 $assigneeParam = $filterUnassigned ? 'unassigned' : $filterAssigneeId;
-                $routeParams = array_filter(['board' => $board, 'assignee' => $assigneeParam, 'type' => $filterType, 'status' => !empty($filterGroupIds) ? $filterGroupIds : null]);
+                $routeParams = array_filter([
+                    'board' => $board,
+                    'assignee' => $assigneeParam,
+                    'type' => $filterType,
+                    'status' => ! empty($filterGroupIds) ? $filterGroupIds : null,
+                    'visibility' => $itemVisibility !== 'active' ? $itemVisibility : null,
+                    'show_done' => ($itemVisibility === 'active' && $showDone) ? 1 : null,
+                ], fn ($v) => $v !== null && $v !== '');
             @endphp
-            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'kanban'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'kanban' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Kanban View</a>
-            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'table'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'table' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">List View</a>
-            <a href="{{ route('boards.export-csv', $board) }}" class="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700">Download CSV</a>
-            @if(auth()->user()->is_admin)
-            <form action="{{ route('boards.destroy', $board) }}" method="POST" class="inline" onsubmit="return confirm('Delete this board and all its tasks?');">
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 hover:text-red-700">Delete board</button>
-            </form>
-            @endif
+            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'kanban'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'kanban' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Kanban</a>
+            <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'table'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'table' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">List</a>
+            <div class="relative" x-data="{ open: false }">
+                <button type="button" @click="open = !open" class="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50" title="More">⋯</button>
+                <div x-show="open" @click.outside="open = false" x-cloak class="absolute right-0 z-50 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                    <a href="{{ route('boards.export-csv', $board) }}" class="block px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Download CSV</a>
+                    @if(auth()->user()->is_admin)
+                        <a href="{{ route('user-management.index') }}#boards" class="block px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Manage access</a>
+                        <form action="{{ route('boards.destroy', $board) }}" method="POST" onsubmit="return confirm('Delete this board and all its tasks?');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50">Delete board</button>
+                        </form>
+                    @endif
+                </div>
+            </div>
         </div>
     </div>
 
@@ -245,7 +336,15 @@ new class extends Component
     @endif
 
     @if($view === 'table')
-        @livewire('table-view', ['boardId' => $boardId, 'filterAssigneeId' => $filterAssigneeId, 'filterUnassigned' => $filterUnassigned, 'filterType' => $filterType, 'filterGroupIds' => $filterGroupIds])
+        @livewire('table-view', [
+            'boardId' => $boardId,
+            'filterAssigneeId' => $filterAssigneeId,
+            'filterUnassigned' => $filterUnassigned,
+            'filterType' => $filterType,
+            'filterGroupIds' => $filterGroupIds,
+            'itemVisibility' => $itemVisibility,
+            'showDone' => $showDone,
+        ], key('table-'.$boardId.'-'.$itemVisibility.'-'.($showDone ? '1' : '0')))
     @else
         <div class="flex min-h-0 flex-1 flex-col gap-3 rounded-lg bg-gray-900 p-3 ring-1 ring-white/5">
             @if($board)
@@ -281,7 +380,9 @@ new class extends Component
                     'filterType' => $filterType,
                     'filterGroupIds' => $filterGroupIds,
                     'filterSearch' => $filterSearch,
-                ], key('kanban-'.$boardId.'-'.md5($filterSearch)))
+                    'itemVisibility' => $itemVisibility,
+                    'showDone' => $showDone,
+                ], key('kanban-'.$boardId.'-'.$itemVisibility.'-'.($showDone ? '1' : '0').'-'.md5($filterSearch)))
             </div>
         </div>
     @endif
@@ -645,6 +746,30 @@ new class extends Component
                             <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors">Save changes</button>
                         </div>
                     </form>
+                    <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+                        @if($item->isArchived())
+                            <form action="{{ route('items.unarchive', [$board, $item]) }}" method="POST" class="inline">
+                                @csrf
+                                <input type="hidden" name="view" value="{{ $view }}" />
+                                <button type="submit" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800">Restore</button>
+                            </form>
+                        @else
+                            <form action="{{ route('items.archive', [$board, $item]) }}" method="POST" class="inline" onsubmit="return confirm('Archive this item? It will leave the active board.');">
+                                @csrf
+                                <input type="hidden" name="view" value="{{ $view }}" />
+                                <button type="submit" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-amber-50 hover:text-amber-800">Archive</button>
+                            </form>
+                        @endif
+                        <form action="{{ route('items.destroy', [$board, $item]) }}" method="POST" class="inline" onsubmit="return confirm('Permanently delete this item? This cannot be undone.');">
+                            @csrf
+                            @method('DELETE')
+                            <input type="hidden" name="view" value="{{ $view }}" />
+                            <button type="submit" class="rounded-md px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50">Delete</button>
+                        </form>
+                        @if($item->isArchived())
+                            <span class="text-xs text-amber-700">Archived {{ $item->archived_at?->diffForHumans() }}</span>
+                        @endif
+                    </div>
                     <div class="mt-5 border-t border-gray-100 pt-4">
                         <h3 class="text-xs font-medium uppercase tracking-wide text-gray-500">Screenshots</h3>
                         @if($item->attachments && count($item->attachments) > 0)

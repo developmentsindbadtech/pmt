@@ -29,4 +29,24 @@ class Group extends Model
     {
         return $this->hasMany(Item::class, 'group_id')->orderBy('position');
     }
+
+    /**
+     * Terminal / "done" columns: Closed, Done, Complete, etc.
+     */
+    public static function isDoneName(?string $name): bool
+    {
+        if ($name === null || trim($name) === '') {
+            return false;
+        }
+        $l = mb_strtolower(trim($name));
+
+        return str_contains($l, 'done')
+            || str_contains($l, 'complete')
+            || str_contains($l, 'closed');
+    }
+
+    public function isDone(): bool
+    {
+        return static::isDoneName($this->name);
+    }
 }

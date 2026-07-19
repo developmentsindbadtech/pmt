@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Board;
+use App\Models\Group;
 use Livewire\Component;
 
 new class extends Component
@@ -19,20 +20,56 @@ new class extends Component
     /** From parent; parent uses wire:key including this value so each change remounts with correct filter. */
     public string $filterSearch = '';
 
-    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = [], string $filterSearch = ''): void
-    {
+    /** active | archived */
+    public string $itemVisibility = 'active';
+
+    public bool $showDone = false;
+
+    public function mount(
+        int $boardId,
+        ?int $filterAssigneeId = null,
+        bool $filterUnassigned = false,
+        ?string $filterType = null,
+        array $filterGroupIds = [],
+        string $filterSearch = '',
+        string $itemVisibility = 'active',
+        bool $showDone = false,
+    ): void {
         $this->boardId = $boardId;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
         $this->filterGroupIds = $filterGroupIds;
         $this->filterSearch = $filterSearch;
+        $this->itemVisibility = in_array($itemVisibility, ['active', 'archived'], true) ? $itemVisibility : 'active';
+        $this->showDone = $showDone;
     }
 
     public function getBoardProperty(): ?Board
     {
-        $groupsQuery = fn ($q) => $q->orderBy('position')->when(! empty($this->filterGroupIds), fn ($sub) => $sub->whereIn('id', $this->filterGroupIds))->with(['items' => function ($q) {
+        $doneGroupIds = [];
+        if ($this->itemVisibility === 'active' && ! $this->showDone) {
+            $doneGroupIds = Group::query()
+                ->where('board_id', $this->boardId)
+                ->get()
+                ->filter(fn (Group $g) => $g->isDone())
+                ->pluck('id')
+                ->all();
+        }
+
+        $groupsQuery = fn ($q) => $q->orderBy('position')->when(! empty($this->filterGroupIds), fn ($sub) => $sub->whereIn('id', $this->filterGroupIds))->with(['items' => function ($q) use ($doneGroupIds) {
             $q->orderBy('position')->limit(150)->with('assignee')->withCount('children');
+            if ($this->itemVisibility === 'archived') {
+                $q->archived();
+            } else {
+                $q->active();
+            }
+            // Hide Done items while keeping the column for drop-to-complete.
+            if ($doneGroupIds !== []) {
+                $q->where(function ($sub) use ($doneGroupIds) {
+                    $sub->whereNull('group_id')->orWhereNotIn('group_id', $doneGroupIds);
+                });
+            }
             if ($this->filterUnassigned) {
                 $q->whereNull('assignee_id');
             } elseif ($this->filterAssigneeId !== null) {
@@ -63,14 +100,21 @@ new class extends Component
 
 @php
     $board = $this->board;
+    $isArchivedView = $itemVisibility === 'archived';
 @endphp
 @if($board)
-<div class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]" data-board-id="{{ $board->id }}">
+<div
+    class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]"
+    data-board-id="{{ $board->id }}"
+    data-hide-done="{{ ($itemVisibility === 'active' && ! $showDone) ? '1' : '0' }}"
+>
     <div class="flex min-h-0 min-w-full flex-1">
         @foreach($board->groups as $index => $group)
+            @php $groupIsDone = $group->isDone(); @endphp
             <div
                 class="kanban-column flex min-h-0 min-w-[150px] flex-1 flex-col border-r border-gray-700 last:border-r-0"
                 data-group-id="{{ $group->id }}"
+                data-is-done="{{ $groupIsDone ? '1' : '0' }}"
             >
                 <div class="shrink-0 border-b border-gray-700 bg-gray-800 px-3 py-2">
                     <h3 class="truncate text-sm font-medium text-white">
@@ -79,9 +123,13 @@ new class extends Component
                         @if($group->wip_limit)
                             <span class="{{ $group->items->count() > $group->wip_limit ? 'text-red-400' : 'text-gray-400' }}">/ {{ $group->wip_limit }}</span>
                         @endif
+                        @if($groupIsDone && $itemVisibility === 'active' && ! $showDone)
+                            <span class="ml-1 text-[10px] font-normal text-gray-500">hidden</span>
+                        @endif
                     </h3>
                 </div>
                 <div class="kanban-column-body flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2 bg-gray-800">
+                    @unless($isArchivedView)
                     <form action="{{ route('items.store', $board) }}" method="POST" class="shrink-0 rounded-md border border-dashed border-gray-600 p-1.5" x-data="{ title: '' }">
                         @csrf
                         <input type="hidden" name="group_id" value="{{ $group->id }}" />
@@ -93,16 +141,18 @@ new class extends Component
                             </button>
                         </div>
                     </form>
+                    @endunless
                     @foreach($group->items as $item)
                         <div
                             class="kanban-item group cursor-grab rounded-md border border-gray-600/80 bg-gray-700/90 px-2 py-1.5 transition-opacity duration-200 active:cursor-grabbing hover:border-gray-500"
-                            draggable="true"
+                            draggable="{{ $isArchivedView ? 'false' : 'true' }}"
                             data-item-id="{{ $item->id }}"
-                            data-delete-url="{{ route('items.destroy', [$board, $item]) }}"
+                            data-archive-url="{{ $isArchivedView ? route('items.unarchive', [$board, $item]) : route('items.archive', [$board, $item]) }}"
+                            data-archive-action="{{ $isArchivedView ? 'restore' : 'archive' }}"
                         >
                             <div class="flex items-center justify-between gap-1">
                                 <button type="button" class="js-kanban-open-item flex min-w-0 flex-1 items-center gap-1 truncate text-left text-[13px] leading-snug text-gray-200 hover:text-white hover:underline focus:outline-none" data-item-id="{{ $item->id }}" data-href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" title="{{ $item->name }}" aria-label="Open item #{{ $item->number }}"><span class="shrink-0 text-gray-400">#{{ $item->number }}</span>@if($item->parent_id)<span class="shrink-0 text-gray-400" title="Has parent">↳</span>@endif<span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></button>
-                                <button type="button" class="js-kanban-delete flex-shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition hover:text-red-400 group-hover:opacity-100" title="Delete" aria-label="Delete item #{{ $item->number }}">&#215;</button>
+                                <button type="button" class="js-kanban-archive flex-shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-gray-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100" title="{{ $isArchivedView ? 'Restore' : 'Archive' }}" aria-label="{{ $isArchivedView ? 'Restore' : 'Archive' }} item #{{ $item->number }}">{{ $isArchivedView ? '↩' : 'Archive' }}</button>
                             </div>
                             <div class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]">
                                 @if($item->item_type === 'bug')
@@ -220,6 +270,15 @@ new class extends Component
                     if (!r.ok && card && oldParent) {
                         if (oldNext) oldParent.insertBefore(card, oldNext);
                         else oldParent.appendChild(card);
+                        return;
+                    }
+                    // Drop onto Done while Hide Done is on → clear the card from the board.
+                    var boardEl = column.closest('.js-kanban-board');
+                    var hideDone = boardEl && boardEl.getAttribute('data-hide-done') === '1';
+                    var targetDone = column.getAttribute('data-is-done') === '1';
+                    if (r.ok && hideDone && targetDone && card) {
+                        card.style.opacity = '0';
+                        setTimeout(function() { card.remove(); }, 180);
                     }
                 });
         }, true);
@@ -238,17 +297,22 @@ new class extends Component
                 if (openLink.blur) openLink.blur();
                 return;
             }
-            var btn = e.target.closest('.js-kanban-delete');
+            var btn = e.target.closest('.js-kanban-archive');
             if (!btn) return;
             e.preventDefault();
             e.stopPropagation();
             var card = btn.closest('.kanban-item');
             if (!card) return;
-            var url = card.getAttribute('data-delete-url');
-            if (!url || !confirm('Delete this task?')) return;
+            var url = card.getAttribute('data-archive-url');
+            var action = card.getAttribute('data-archive-action') || 'archive';
+            var msg = action === 'restore' ? 'Restore this item to the active board?' : 'Archive this item?';
+            if (!url || !confirm(msg)) return;
             var token = document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content;
+            var formData = new FormData();
+            if (token) formData.append('_token', token);
             fetch(url, {
-                method: 'DELETE',
+                method: 'POST',
+                body: formData,
                 headers: { 'X-CSRF-TOKEN': token || '', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             }).then(function(r) {
                 if (r.ok) {

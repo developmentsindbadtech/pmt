@@ -19,6 +19,59 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    /**
+     * Local-only login when Microsoft SSO is not configured.
+     * Available only when APP_ENV=local.
+     *
+     * as=admin → local@pmt.test (admin)
+     * as=user  → user@pmt.test (regular user, for testing the member view)
+     */
+    public function localLogin(Request $request)
+    {
+        if (! app()->environment('local')) {
+            abort(404);
+        }
+
+        if (config('services.microsoft.client_id') && config('services.microsoft.client_secret')) {
+            return redirect()->route('login')
+                ->withErrors(['microsoft' => 'Use Microsoft SSO when it is configured.']);
+        }
+
+        $as = $request->input('as', 'admin') === 'user' ? 'user' : 'admin';
+
+        if ($as === 'user') {
+            $user = User::firstOrCreate(
+                ['email' => 'user@pmt.test'],
+                [
+                    'name' => 'Local User',
+                    'password' => Hash::make(bin2hex(random_bytes(16))),
+                    'is_admin' => false,
+                ]
+            );
+            // Keep the test account non-admin even if it already existed.
+            if ($user->is_admin) {
+                $user->update(['is_admin' => false]);
+            }
+        } else {
+            $user = User::firstOrCreate(
+                ['email' => 'local@pmt.test'],
+                [
+                    'name' => 'Local Dev',
+                    'password' => Hash::make(bin2hex(random_bytes(16))),
+                    'is_admin' => true,
+                ]
+            );
+            if (! $user->is_admin) {
+                $user->update(['is_admin' => true]);
+            }
+        }
+
+        Auth::login($user, true);
+        $request->session()->regenerate();
+
+        return redirect()->intended(route('boards.index'));
+    }
+
     public function redirectToMicrosoft(Request $request)
     {
         if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {

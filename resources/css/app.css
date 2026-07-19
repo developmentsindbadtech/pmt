@@ -114,6 +114,77 @@
     display: none !important;
 }
 
+/* Sheet status / priority chips — soft industry colors (always present; not purged by Tailwind). */
+.sheet-chip {
+    border-radius: 0.375rem;
+    font-weight: 500;
+}
+.sheet-chip-empty {
+    background: transparent;
+    color: #94a3b8;
+}
+/* Status */
+.sheet-chip-status-todo {
+    background: #f1f5f9;
+    color: #475569;
+}
+.sheet-chip-status-progress {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+.sheet-chip-status-stuck {
+    background: #ffe4e6;
+    color: #be123c;
+}
+.sheet-chip-status-done {
+    background: #ecfdf5;
+    color: #047857;
+}
+.sheet-chip-status-default {
+    background: #f8fafc;
+    color: #475569;
+}
+/* Priority */
+.sheet-chip-priority-critical {
+    background: #ffe4e6;
+    color: #9f1239;
+}
+.sheet-chip-priority-high {
+    background: #ffedd5;
+    color: #c2410c;
+}
+.sheet-chip-priority-medium {
+    background: #fef3c7;
+    color: #b45309;
+}
+.sheet-chip-priority-low {
+    background: #f1f5f9;
+    color: #475569;
+}
+.sheet-chip-priority-default {
+    background: #f8fafc;
+    color: #475569;
+}
+
+/* Closed chip can be tinted; open dropdown stays plain white (no inherited wash). */
+select.sheet-chip {
+    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+select.sheet-chip:focus,
+select.sheet-chip:focus-visible,
+select.sheet-chip:active {
+    background-color: #ffffff !important;
+    color: #334155 !important;
+    border-color: #cbd5e1 !important;
+    outline: none;
+    box-shadow: 0 0 0 1px #cbd5e1;
+}
+select.sheet-chip option {
+    background-color: #ffffff;
+    color: #334155;
+    font-weight: 500;
+}
+
 /* Detail panel scrollbar styling */
 .item-detail-panel .overflow-y-auto::-webkit-scrollbar {
     width: 8px;

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Board;
+use App\Models\Group;
 use App\Models\Item;
 use Livewire\Component;
 
@@ -16,6 +17,11 @@ new class extends Component
 
     /** @var array<int> Filter by status/group IDs — only show items in these columns (empty = all) */
     public array $filterGroupIds = [];
+
+    /** active | archived */
+    public string $itemVisibility = 'active';
+
+    public bool $showDone = false;
 
     public string $sortColumn = 'position';
 
@@ -36,18 +42,51 @@ new class extends Component
 
     public string $bulkAction = '';
 
-    public function mount(int $boardId, ?int $filterAssigneeId = null, bool $filterUnassigned = false, ?string $filterType = null, array $filterGroupIds = []): void
-    {
+    public function mount(
+        int $boardId,
+        ?int $filterAssigneeId = null,
+        bool $filterUnassigned = false,
+        ?string $filterType = null,
+        array $filterGroupIds = [],
+        string $itemVisibility = 'active',
+        bool $showDone = false,
+    ): void {
         $this->boardId = $boardId;
         $this->filterAssigneeId = $filterAssigneeId;
         $this->filterUnassigned = $filterUnassigned;
         $this->filterType = $filterType;
         $this->filterGroupIds = $filterGroupIds;
+        $this->itemVisibility = in_array($itemVisibility, ['active', 'archived'], true) ? $itemVisibility : 'active';
+        $this->showDone = $showDone;
+    }
+
+    private function applyVisibilityFilters($query)
+    {
+        if ($this->itemVisibility === 'archived') {
+            $query->archived();
+        } else {
+            $query->active();
+            if (! $this->showDone) {
+                $doneGroupIds = Group::query()
+                    ->where('board_id', $this->boardId)
+                    ->get()
+                    ->filter(fn (Group $g) => $g->isDone())
+                    ->pluck('id')
+                    ->all();
+                if ($doneGroupIds !== []) {
+                    $query->where(function ($q) use ($doneGroupIds) {
+                        $q->whereNull('group_id')->orWhereNotIn('group_id', $doneGroupIds);
+                    });
+                }
+            }
+        }
+
+        return $query;
     }
 
     public function getBoardProperty(): ?Board
     {
-        $board = Board::with(['columns' => fn ($q) => $q->orderBy('position')])
+        $board = Board::with(['columns' => fn ($q) => $q->orderBy('position'), 'groups' => fn ($q) => $q->orderBy('position')])
             ->where('id', $this->boardId)
             ->first();
 
@@ -57,6 +96,7 @@ new class extends Component
 
         // Get paginated items - build base query
         $itemsQuery = $board->items();
+        $this->applyVisibilityFilters($itemsQuery);
         
         // Apply filters first
         if ($this->filter !== '') {
@@ -115,6 +155,7 @@ new class extends Component
         
         // Build count query separately (without select and with)
         $countQuery = $board->items();
+        $this->applyVisibilityFilters($countQuery);
         if ($this->filter !== '') {
             $countQuery->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($this->filter).'%']);
         }
@@ -226,10 +267,66 @@ new class extends Component
         session()->flash('success', $deletedCount === 1 ? '1 item deleted.' : $deletedCount.' items deleted.');
     }
 
+    public function archiveSelected(): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $this->selectedItemIds)));
+        if ($ids === []) {
+            return;
+        }
+
+        Item::query()
+            ->where('board_id', $this->boardId)
+            ->whereIn('id', $ids)
+            ->get()
+            ->each
+            ->archive();
+
+        $count = count($ids);
+        $this->selectedItemIds = [];
+        $this->page = 1;
+        unset($this->board);
+        session()->flash('success', $count === 1 ? '1 item archived.' : $count.' items archived.');
+    }
+
+    public function unarchiveSelected(): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $this->selectedItemIds)));
+        if ($ids === []) {
+            return;
+        }
+
+        Item::query()
+            ->where('board_id', $this->boardId)
+            ->whereIn('id', $ids)
+            ->get()
+            ->each
+            ->unarchive();
+
+        $count = count($ids);
+        $this->selectedItemIds = [];
+        $this->page = 1;
+        unset($this->board);
+        session()->flash('success', $count === 1 ? '1 item restored.' : $count.' items restored.');
+    }
+
     public function applyBulkAction(): void
     {
         $ids = array_values(array_unique(array_map('intval', $this->selectedItemIds)));
         if ($ids === [] || $this->bulkAction === '') {
+            return;
+        }
+
+        if ($this->bulkAction === 'archive') {
+            $this->archiveSelected();
+            $this->bulkAction = '';
+
+            return;
+        }
+
+        if ($this->bulkAction === 'unarchive') {
+            $this->unarchiveSelected();
+            $this->bulkAction = '';
+
             return;
         }
 
@@ -286,12 +383,16 @@ new class extends Component
 @if($board)
     {{-- Minimal toolbar: add item + search --}}
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+        @if($itemVisibility !== 'archived')
         <form action="{{ route('items.store', $board) }}" method="POST" class="flex items-center gap-2">
             @csrf
             <input type="hidden" name="view" value="table" />
             <input type="text" name="name" placeholder="New item name" required class="w-56 rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400" />
             <button type="submit" class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Add</button>
         </form>
+        @else
+            <p class="text-sm text-gray-500">Archived items — restore from bulk actions or the item panel.</p>
+        @endif
         <div class="flex items-center gap-2">
             @if(!empty($visibleItemIds))
                 <button
@@ -320,7 +421,9 @@ new class extends Component
                     onsubmit="
                         const action = this.querySelector('select[name=bulk-action]')?.value || '';
                         if (!action) return false;
-                        if (action === 'delete') return confirm('Delete all selected items?');
+                        if (action === 'archive') return confirm('Archive all selected items?');
+                        if (action === 'unarchive') return confirm('Restore all selected items?');
+                        if (action === 'delete') return confirm('Permanently delete all selected items?');
                         if (action.startsWith('status:')) {
                             const label = this.querySelector('select[name=bulk-action] option:checked')?.textContent?.trim() || 'the selected status';
                             return confirm('Change the selected items to ' + label + '?');
@@ -335,7 +438,12 @@ new class extends Component
                         class="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
                     >
                         <option value="">Bulk actions</option>
-                        <option value="delete">Delete selected</option>
+                        @if($itemVisibility === 'archived')
+                            <option value="unarchive">Restore selected</option>
+                        @else
+                            <option value="archive">Archive selected</option>
+                        @endif
+                        <option value="delete">Delete permanently</option>
                         @foreach($board->groups as $group)
                             <option value="status:{{ $group->id }}">Change status to {{ $group->name }}</option>
                         @endforeach
@@ -438,7 +546,6 @@ new class extends Component
                         </button>
                     </th>
                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">Updated By</th>
-                    <th class="w-20 px-2 py-2 text-right text-xs font-medium text-gray-500">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -534,15 +641,16 @@ new class extends Component
                                 —
                             @endif
                         </td>
-                        <td class="whitespace-nowrap px-2 py-2 text-right">
-                            <div class="inline-flex items-center">
-                                <a href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'table']) }}" class="rounded border border-green-400 px-2 py-1 text-xs text-gray-700 hover:border-green-500 hover:text-gray-900">View</a>
-                            </div>
-                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11" class="px-2 py-16 text-center text-sm text-gray-400">No items. Add one above.</td>
+                        <td colspan="10" class="px-2 py-16 text-center text-sm text-gray-400">
+                            @if($itemVisibility === 'archived')
+                                No archived items.
+                            @else
+                                No items yet. Add one above.
+                            @endif
+                        </td>
                     </tr>
                 @endforelse
             </tbody>
@@ -570,6 +678,4 @@ new class extends Component
     <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">Board not found.</div>
 @endif
 </div>
-{{-- Explicit white margin below the card so it's always visible --}}
-<div class="min-h-[min(400px,35vh)] shrink-0" aria-hidden="true"></div>
 </div>

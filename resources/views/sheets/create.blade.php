@@ -5,7 +5,7 @@
 @section('content')
     <div class="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
         <h1 class="text-2xl font-semibold text-gray-900">Create a sheet</h1>
-        <p class="mt-1 text-sm text-gray-500">Starts with a Title and Status column — you can add more columns after.</p>
+        <p class="mt-1 text-sm text-gray-500">Starts with Title, Status, Owner, Due, and Priority — add more columns anytime.</p>
 
         <form action="{{ route('sheets.store') }}" method="POST" class="mt-6 space-y-4">
             @csrf

@@ -25,6 +25,15 @@ class Sheet extends Model
         return $this->belongsToMany(User::class)->withTimestamps();
     }
 
+    /** Sheets the user owns or is assigned to (personal list — not “all sheets”). */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $query->where(function ($q) use ($user) {
+            $q->where('created_by', $user->id)
+                ->orWhereHas('users', fn ($u) => $u->where('users.id', $user->id));
+        });
+    }
+
     public function columns(): HasMany
     {
         return $this->hasMany(SheetColumn::class)->orderBy('position');

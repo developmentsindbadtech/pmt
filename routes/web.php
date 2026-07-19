@@ -17,6 +17,7 @@ Route::get('/', function () {
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::post('/auth/local', [AuthController::class, 'localLogin'])->name('auth.local');
 
 Route::get('/auth/microsoft', [AuthController::class, 'redirectToMicrosoft'])->name('auth.microsoft');
 Route::get('/auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback'])->name('auth.microsoft.callback');
@@ -40,6 +41,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/boards/{board}/items', [ItemController::class, 'store'])->name('items.store');
     Route::put('/boards/{board}/items/{item}', [ItemController::class, 'update'])->name('items.update');
     Route::post('/boards/{board}/items/{item}/move', [ItemController::class, 'move'])->name('items.move');
+    Route::post('/boards/{board}/items/{item}/archive', [ItemController::class, 'archive'])->name('items.archive');
+    Route::post('/boards/{board}/items/{item}/unarchive', [ItemController::class, 'unarchive'])->name('items.unarchive');
     Route::delete('/boards/{board}/items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
     Route::post('/boards/{board}/items/{item}/attachments', [ItemController::class, 'storeAttachment'])->name('items.attachments.store');
     Route::delete('/boards/{board}/items/{item}/attachments', [ItemController::class, 'deleteAttachment'])->name('items.attachments.destroy');
@@ -50,6 +53,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sheets', [SheetController::class, 'index'])->name('sheets.index');
     Route::get('/sheets/create', [SheetController::class, 'create'])->name('sheets.create');
     Route::post('/sheets', [SheetController::class, 'store'])->name('sheets.store');
+    Route::get('/api/sheets/{sheet}/mentionable-users', [SheetController::class, 'mentionableUsers'])->name('api.sheets.mentionable-users');
     Route::get('/sheets/{sheet}', [SheetController::class, 'show'])->name('sheets.show');
     Route::delete('/sheets/{sheet}', [SheetController::class, 'destroy'])->name('sheets.destroy');
 });

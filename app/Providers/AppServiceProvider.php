@@ -40,13 +40,10 @@ class AppServiceProvider extends ServiceProvider
                 $board = request()->route('board');
                 $view->with('currentBoardId', $board ? $board->id : null);
 
-                $sheetQuery = Sheet::query();
-                if (! $user->is_admin) {
-                    $sheetQuery->whereHas('users', function ($q) use ($user) {
-                        $q->where('users.id', $user->id);
-                    });
-                }
-                $view->with('sidebarSheets', $sheetQuery->orderBy('name', 'asc')
+                // Same personal list for everyone (including admins) — avoids sidebar clutter.
+                $view->with('sidebarSheets', Sheet::query()
+                    ->visibleTo($user)
+                    ->orderBy('name', 'asc')
                     ->limit(30)
                     ->get(['id', 'name']));
                 $sheet = request()->route('sheet');

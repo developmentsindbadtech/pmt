@@ -42,6 +42,7 @@ class Item extends Model
         'assignee_id',
         'due_at',
         'dev_tag',
+        'archived_at',
     ];
 
     protected $casts = [
@@ -49,7 +50,37 @@ class Item extends Model
         'number' => 'integer',
         'attachments' => 'array',
         'due_at' => 'date',
+        'archived_at' => 'datetime',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    public function archive(): void
+    {
+        if ($this->archived_at === null) {
+            $this->forceFill(['archived_at' => now()])->save();
+        }
+    }
+
+    public function unarchive(): void
+    {
+        if ($this->archived_at !== null) {
+            $this->forceFill(['archived_at' => null])->save();
+        }
+    }
 
     public function board(): BelongsTo
     {
