@@ -2,6 +2,7 @@
 
 use App\Models\Board;
 use App\Models\Group;
+use App\Models\Item;
 use Livewire\Component;
 
 new class extends Component
@@ -43,6 +44,28 @@ new class extends Component
         $this->filterSearch = $filterSearch;
         $this->itemVisibility = in_array($itemVisibility, ['active', 'archived'], true) ? $itemVisibility : 'active';
         $this->showDone = $showDone;
+    }
+
+    public function archiveItem(int $itemId): void
+    {
+        $item = Item::query()->where('board_id', $this->boardId)->find($itemId);
+        if (! $item) {
+            return;
+        }
+        $item->archive();
+        unset($this->board);
+        session()->flash('success', 'Item archived.');
+    }
+
+    public function unarchiveItem(int $itemId): void
+    {
+        $item = Item::query()->where('board_id', $this->boardId)->find($itemId);
+        if (! $item) {
+            return;
+        }
+        $item->unarchive();
+        unset($this->board);
+        session()->flash('success', 'Item restored.');
     }
 
     public function getBoardProperty(): ?Board
@@ -147,12 +170,17 @@ new class extends Component
                             class="kanban-item group cursor-grab rounded-md border border-gray-600/80 bg-gray-700/90 px-2 py-1.5 transition-opacity duration-200 active:cursor-grabbing hover:border-gray-500"
                             draggable="{{ $isArchivedView ? 'false' : 'true' }}"
                             data-item-id="{{ $item->id }}"
-                            data-archive-url="{{ $isArchivedView ? route('items.unarchive', [$board, $item]) : route('items.archive', [$board, $item]) }}"
-                            data-archive-action="{{ $isArchivedView ? 'restore' : 'archive' }}"
                         >
                             <div class="flex items-center justify-between gap-1">
                                 <button type="button" class="js-kanban-open-item flex min-w-0 flex-1 items-center gap-1 truncate text-left text-[13px] leading-snug text-gray-200 hover:text-white hover:underline focus:outline-none" data-item-id="{{ $item->id }}" data-href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" title="{{ $item->name }}" aria-label="Open item #{{ $item->number }}"><span class="shrink-0 text-gray-400">#{{ $item->number }}</span>@if($item->parent_id)<span class="shrink-0 text-gray-400" title="Has parent">↳</span>@endif<span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></button>
-                                <button type="button" class="js-kanban-archive flex-shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-gray-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100" title="{{ $isArchivedView ? 'Restore' : 'Archive' }}" aria-label="{{ $isArchivedView ? 'Restore' : 'Archive' }} item #{{ $item->number }}">{{ $isArchivedView ? '↩' : 'Archive' }}</button>
+                                <button
+                                    type="button"
+                                    wire:click="{{ $isArchivedView ? 'unarchiveItem' : 'archiveItem' }}({{ $item->id }})"
+                                    wire:confirm="{{ $isArchivedView ? 'Restore this item to the active board?' : 'Archive this item?' }}"
+                                    class="flex-shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-gray-400 opacity-0 transition hover:text-amber-300 group-hover:opacity-100"
+                                    title="{{ $isArchivedView ? 'Restore' : 'Archive' }}"
+                                    aria-label="{{ $isArchivedView ? 'Restore' : 'Archive' }} item #{{ $item->number }}"
+                                >{{ $isArchivedView ? '↩' : 'Archive' }}</button>
                             </div>
                             <div class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]">
                                 @if($item->item_type === 'bug')
@@ -297,31 +325,6 @@ new class extends Component
                 if (openLink.blur) openLink.blur();
                 return;
             }
-            var btn = e.target.closest('.js-kanban-archive');
-            if (!btn) return;
-            e.preventDefault();
-            e.stopPropagation();
-            var card = btn.closest('.kanban-item');
-            if (!card) return;
-            var url = card.getAttribute('data-archive-url');
-            var action = card.getAttribute('data-archive-action') || 'archive';
-            var msg = action === 'restore' ? 'Restore this item to the active board?' : 'Archive this item?';
-            if (!url || !confirm(msg)) return;
-            var token = document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content;
-            var formData = new FormData();
-            if (token) formData.append('_token', token);
-            fetch(url, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-CSRF-TOKEN': token || '', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-            }).then(function(r) {
-                if (r.ok) {
-                    card.style.opacity = '0';
-                    setTimeout(function() { card.remove(); }, 200);
-                } else {
-                    window.location.reload();
-                }
-            });
         }, true);
     }
     if (document.readyState === 'loading') {

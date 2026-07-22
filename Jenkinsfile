@@ -42,10 +42,13 @@ pipeline {
             when { branch 'main' }
             steps {
                 sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
-                    // Clears stale route cache so new routes (e.g. items.archive) are registered.
+                    // Clear caches only. Do not rebuild as jenkins-deploy-key — that can leave
+                    // bootstrap/cache + storage/logs owned by deploy user while PHP-FPM (www-data)
+                    // cannot write (Permission denied on laravel.log / stale routes).
+                    // Prefer on server (once, as root): chown -R www-data:www-data storage bootstrap/cache
                     sh '''
                         ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
-                            'APP_DIR="${PMT_APP_DIR:-/var/www/pmt-prod}"; cd "$APP_DIR" && php artisan optimize:clear && php artisan route:cache && php artisan config:cache && php artisan view:cache'
+                            'APP_DIR="${PMT_APP_DIR:-/var/www/pmt-prod}"; cd "$APP_DIR" && php artisan optimize:clear || true'
                     '''
                 }
             }

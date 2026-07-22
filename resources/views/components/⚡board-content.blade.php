@@ -150,6 +150,31 @@ new class extends Component
         unset($this->board);
     }
 
+    public function archiveItem(int $itemId): void
+    {
+        $item = Item::query()->where('board_id', $this->boardId)->find($itemId);
+        if (! $item) {
+            return;
+        }
+        $item->archive();
+        if ($this->selectedItemId === $itemId) {
+            $this->selectedItemId = null;
+        }
+        unset($this->item, $this->board);
+        session()->flash('success', 'Item archived.');
+    }
+
+    public function unarchiveItem(int $itemId): void
+    {
+        $item = Item::query()->where('board_id', $this->boardId)->find($itemId);
+        if (! $item) {
+            return;
+        }
+        $item->unarchive();
+        unset($this->item, $this->board);
+        session()->flash('success', 'Item restored.');
+    }
+
     public function getBoardProperty(): ?Board
     {
         return Board::with(['columns' => fn ($q) => $q->orderBy('position'), 'groups', 'users'])
@@ -748,17 +773,19 @@ new class extends Component
                     </form>
                     <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
                         @if($item->isArchived())
-                            <form action="{{ route('items.unarchive', [$board, $item]) }}" method="POST" class="inline">
-                                @csrf
-                                <input type="hidden" name="view" value="{{ $view }}" />
-                                <button type="submit" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800">Restore</button>
-                            </form>
+                            <button
+                                type="button"
+                                wire:click="unarchiveItem({{ $item->id }})"
+                                wire:confirm="Restore this item to the active board?"
+                                class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-800"
+                            >Restore</button>
                         @else
-                            <form action="{{ route('items.archive', [$board, $item]) }}" method="POST" class="inline" onsubmit="return confirm('Archive this item? It will leave the active board.');">
-                                @csrf
-                                <input type="hidden" name="view" value="{{ $view }}" />
-                                <button type="submit" class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-amber-50 hover:text-amber-800">Archive</button>
-                            </form>
+                            <button
+                                type="button"
+                                wire:click="archiveItem({{ $item->id }})"
+                                wire:confirm="Archive this item? It will leave the active board."
+                                class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-amber-50 hover:text-amber-800"
+                            >Archive</button>
                         @endif
                         <form action="{{ route('items.destroy', [$board, $item]) }}" method="POST" class="inline" onsubmit="return confirm('Permanently delete this item? This cannot be undone.');">
                             @csrf
