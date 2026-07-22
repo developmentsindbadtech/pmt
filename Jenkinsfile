@@ -38,6 +38,18 @@ pipeline {
                 }
             }
         }
+        stage('Refresh Laravel caches') {
+            when { branch 'main' }
+            steps {
+                sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
+                    // Clears stale route cache so new routes (e.g. items.archive) are registered.
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
+                            'APP_DIR="${PMT_APP_DIR:-/var/www/pmt-prod}"; cd "$APP_DIR" && php artisan optimize:clear && php artisan route:cache && php artisan config:cache && php artisan view:cache'
+                    '''
+                }
+            }
+        }
     }
     post {
         success {
