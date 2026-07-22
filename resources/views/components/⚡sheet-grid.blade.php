@@ -612,57 +612,56 @@ new class extends Component
             || str_contains($l, 'closed');
     };
 
-    // Industry-standard soft chips via CSS classes in app.css (reliable with Vite).
-    $statusClass = function (?string $label): string {
+    // Soft chips: classes (app.css) + inline styles so colors still show if Vite assets are stale on deploy.
+    $statusChip = function (?string $label): array {
         if ($label === null || $label === '') {
-            return 'sheet-chip sheet-chip-empty';
+            return ['class' => 'sheet-chip sheet-chip-empty', 'style' => 'background:transparent;color:#94a3b8'];
         }
         $l = mb_strtolower(trim($label));
         if (str_contains($l, 'done') || str_contains($l, 'complete') || str_contains($l, 'closed')) {
-            return 'sheet-chip sheet-chip-status-done';
+            return ['class' => 'sheet-chip sheet-chip-status-done', 'style' => 'background:#ecfdf5;color:#047857'];
         }
         if (str_contains($l, 'stuck') || str_contains($l, 'block')) {
-            return 'sheet-chip sheet-chip-status-stuck';
+            return ['class' => 'sheet-chip sheet-chip-status-stuck', 'style' => 'background:#ffe4e6;color:#be123c'];
         }
         if (str_contains($l, 'progress') || str_contains($l, 'working') || str_contains($l, 'doing')) {
-            return 'sheet-chip sheet-chip-status-progress';
+            return ['class' => 'sheet-chip sheet-chip-status-progress', 'style' => 'background:#e0f2fe;color:#0369a1'];
         }
         if (str_contains($l, 'to do') || $l === 'todo' || $l === 'new' || str_contains($l, 'backlog') || str_contains($l, 'open')) {
-            return 'sheet-chip sheet-chip-status-todo';
+            return ['class' => 'sheet-chip sheet-chip-status-todo', 'style' => 'background:#f1f5f9;color:#475569'];
         }
 
-        return 'sheet-chip sheet-chip-status-default';
+        return ['class' => 'sheet-chip sheet-chip-status-default', 'style' => 'background:#f8fafc;color:#475569'];
     };
 
-    $priorityClass = function (?string $label): string {
+    $priorityChip = function (?string $label): array {
         if ($label === null || $label === '') {
-            return 'sheet-chip sheet-chip-empty';
+            return ['class' => 'sheet-chip sheet-chip-empty', 'style' => 'background:transparent;color:#94a3b8'];
         }
         $l = mb_strtolower(trim($label));
         if (str_contains($l, 'critical') || str_contains($l, 'urgent') || str_contains($l, 'highest')) {
-            return 'sheet-chip sheet-chip-priority-critical';
+            return ['class' => 'sheet-chip sheet-chip-priority-critical', 'style' => 'background:#ffe4e6;color:#9f1239'];
         }
-        // Match exact "high" first so "highest" already handled above.
         if ($l === 'high' || preg_match('/\bhigh\b/', $l)) {
-            return 'sheet-chip sheet-chip-priority-high';
+            return ['class' => 'sheet-chip sheet-chip-priority-high', 'style' => 'background:#ffedd5;color:#c2410c'];
         }
         if ($l === 'medium' || str_contains($l, 'medium') || str_contains($l, 'normal')) {
-            return 'sheet-chip sheet-chip-priority-medium';
+            return ['class' => 'sheet-chip sheet-chip-priority-medium', 'style' => 'background:#fef3c7;color:#b45309'];
         }
         if ($l === 'low' || preg_match('/\blow\b/', $l) || str_contains($l, 'lowest')) {
-            return 'sheet-chip sheet-chip-priority-low';
+            return ['class' => 'sheet-chip sheet-chip-priority-low', 'style' => 'background:#f1f5f9;color:#475569'];
         }
 
-        return 'sheet-chip sheet-chip-priority-default';
+        return ['class' => 'sheet-chip sheet-chip-priority-default', 'style' => 'background:#f8fafc;color:#475569'];
     };
 
-    $chipClassForColumn = function ($col, ?string $label) use ($statusClass, $priorityClass): string {
+    $chipForColumn = function ($col, ?string $label) use ($statusChip, $priorityChip): array {
         $name = mb_strtolower((string) ($col->name ?? ''));
         if (str_contains($name, 'priority')) {
-            return $priorityClass($label);
+            return $priorityChip($label);
         }
 
-        return $statusClass($label);
+        return $statusChip($label);
     };
 
     $primaryStatusCol = $columns->first(fn ($c) => $c->type === 'status' && mb_strtolower($c->name) === 'status')
@@ -951,9 +950,13 @@ new class extends Component
                                         @case('status')
                                             @php
                                                 $opts = $col->options ?? [];
-                                                $badge = $chipClassForColumn($col, $cell ? (string) $cell : null);
+                                                $chip = $chipForColumn($col, $cell ? (string) $cell : null);
                                             @endphp
-                                            <select wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)" class="w-full max-w-[9.5rem] cursor-pointer border border-transparent px-2 py-1 text-left text-xs focus:outline-none {{ $badge }}">
+                                            <select
+                                                wire:change="updateCell({{ $row->id }}, {{ $col->id }}, $event.target.value)"
+                                                class="w-full max-w-[9.5rem] cursor-pointer border border-transparent px-2 py-1 text-left text-xs focus:outline-none {{ $chip['class'] }}"
+                                                style="{{ $chip['style'] }}"
+                                            >
                                                 <option value="">—</option>
                                                 @foreach($opts as $opt)
                                                     <option value="{{ $opt }}" @selected((string) $cell === (string) $opt)>{{ $opt }}</option>

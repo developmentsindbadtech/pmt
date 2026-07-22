@@ -29,7 +29,7 @@
             {{-- Header --}}
             <div class="mb-6">
                 <h1 class="text-xl font-semibold tracking-tight text-gray-900">User Management</h1>
-                <p class="mt-1 text-sm text-gray-500">Boards: who sees each board. Sheets: add people when someone asks — the owner always keeps access.</p>
+                <p class="mt-1 text-sm text-gray-500">Boards: who sees each board. Sheets: tick people (including admins) so the sheet appears in their personal Sheets list — the owner always keeps access.</p>
             </div>
 
             @if (session('success'))
@@ -180,7 +180,7 @@
                 {{-- ===================== SHEETS ===================== --}}
                 <section x-show="tab === 'sheets'" x-cloak id="sheets">
                     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <p class="text-xs text-gray-500">Search a sheet or owner, then add people. Owner is locked in.</p>
+                        <p class="text-xs text-gray-500">Search a sheet or owner, then tick who should see it in Sheets (admins included). Owner is locked in.</p>
                         <a
                             href="{{ route('user-management.index', ['board_sort' => $boardSort, 'sheet_sort' => $nextSheetSort]) }}#sheets"
                             class="text-xs font-medium text-gray-500 hover:text-gray-800"
@@ -243,7 +243,7 @@
                                         <input type="hidden" name="sheet_sort" value="{{ $sheetSort }}" />
 
                                         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                            <p class="text-xs text-gray-500">Tick people who asked for access, then Save.</p>
+                                            <p class="text-xs text-gray-500">Tick people (including yourself as admin) so the sheet shows in their Sheets list, then Save.</p>
                                             <button
                                                 type="submit"
                                                 class="rounded-md px-2.5 py-1 text-xs font-medium transition"
@@ -266,13 +266,13 @@
                                                 <input type="hidden" name="user_ids[]" value="{{ $owner->id }}" />
                                             @endif
 
-                                            @forelse ($users as $user)
+                                            @forelse ($sheetUsers as $user)
                                                 @if((int) $user->id === $ownerId)
                                                     @continue
                                                 @endif
                                                 <label
                                                     class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition has-[:checked]:border-blue-200 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-800 border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                                                    title="{{ $user->email }}"
+                                                    title="{{ $user->email }}{{ $user->is_admin ? ' (admin)' : '' }}"
                                                 >
                                                     <input
                                                         type="checkbox"
@@ -282,6 +282,9 @@
                                                         class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                     <span>{{ $user->name }}</span>
+                                                    @if($user->is_admin)
+                                                        <span class="text-[10px] uppercase tracking-wide text-slate-400">Admin</span>
+                                                    @endif
                                                 </label>
                                             @empty
                                                 <p class="text-xs text-gray-400">No other users to add yet.</p>

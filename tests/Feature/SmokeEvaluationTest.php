@@ -163,6 +163,32 @@ class SmokeEvaluationTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_admin_can_assign_another_admin_so_sheet_appears_in_their_personal_list(): void
+    {
+        $owner = $this->admin();
+        $otherAdmin = User::factory()->create(['is_admin' => true, 'name' => 'Other Admin']);
+        $sheet = Sheet::create(['name' => 'Shared Admin Sheet', 'created_by' => $owner->id]);
+        $sheet->users()->attach($owner->id);
+
+        $this->actingAs($otherAdmin)->get(route('sheets.index'))
+            ->assertOk()
+            ->assertDontSee('Shared Admin Sheet');
+
+        $this->actingAs($owner)->get(route('user-management.index'))
+            ->assertOk()
+            ->assertSee('Other Admin');
+
+        $this->actingAs($owner)->put(route('user-management.update-sheet', $sheet), [
+            'user_ids' => [$otherAdmin->id],
+        ])->assertRedirect();
+
+        $this->assertTrue($sheet->fresh()->users()->where('users.id', $otherAdmin->id)->exists());
+
+        $this->actingAs($otherAdmin)->get(route('sheets.index'))
+            ->assertOk()
+            ->assertSee('Shared Admin Sheet');
+    }
+
     public function test_granting_board_and_sheet_access_emails_new_members_when_graph_configured(): void
     {
         config([

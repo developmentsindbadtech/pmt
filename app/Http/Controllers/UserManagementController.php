@@ -36,8 +36,14 @@ class UserManagementController extends Controller
             ->orderBy('name', $sheetSort)
             ->get();
 
+        // Boards: non-admins only (admins already see every board in the sidebar).
         $users = User::query()
             ->where('is_admin', false)
+            ->orderBy('name')
+            ->get();
+
+        // Sheets: everyone, including admins — personal Sheets list is opt-in via assignment.
+        $sheetUsers = User::query()
             ->orderBy('name')
             ->get();
 
@@ -45,6 +51,7 @@ class UserManagementController extends Controller
             'boards' => $boards,
             'sheets' => $sheets,
             'users' => $users,
+            'sheetUsers' => $sheetUsers,
             'boardSort' => $boardSort,
             'sheetSort' => $sheetSort,
         ]);
@@ -88,7 +95,7 @@ class UserManagementController extends Controller
             'user_ids.*' => 'exists:users,id',
         ]);
 
-        // Owner always keeps access; admins control additional people only.
+        // Owner always keeps access; anyone else (including admins) is opt-in for the personal Sheets list.
         $userIds = collect($validated['user_ids'] ?? [])
             ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
@@ -99,15 +106,8 @@ class UserManagementController extends Controller
             $userIds->push((int) $sheet->created_by);
         }
 
-        // Only sync non-admin members + owner (owner may be admin).
         $assignable = User::query()
             ->whereIn('id', $userIds->all())
-            ->where(function ($q) use ($sheet) {
-                $q->where('is_admin', false);
-                if ($sheet->created_by) {
-                    $q->orWhere('id', $sheet->created_by);
-                }
-            })
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();
