@@ -26,8 +26,8 @@ new class extends Component
     /** Quick filter: open (default) | done | mine | all | archived */
     public string $filter = 'open';
 
-    /** From analytics: a user id, or "unassigned". Empty means everyone. */
-    public string $ownerFilter = '';
+    /** From analytics: a user id, or "unassigned". Empty means everyone. Nullable so a missing query value cannot 500 before mount. */
+    public ?string $ownerFilter = '';
 
     /** Row detail sidebar (description + comments). */
     public ?int $selectedRowId = null;
@@ -369,9 +369,7 @@ new class extends Component
     {
         $this->sheetId = $sheetId;
         $ownerFilter = trim((string) $ownerFilter);
-        if ($ownerFilter === 'unassigned' || ctype_digit($ownerFilter)) {
-            $this->ownerFilter = $ownerFilter;
-        }
+        $this->ownerFilter = ($ownerFilter === 'unassigned' || ctype_digit($ownerFilter)) ? $ownerFilter : '';
 
         $user = auth()->user();
         if ($user && ! $user->is_admin) {

@@ -198,6 +198,19 @@ class AnalyticsTest extends TestCase
             ->assertSee('Sam row');
     }
 
+    public function test_a_new_sheet_opens_when_no_owner_filter_is_in_the_url(): void
+    {
+        $user = User::factory()->create(['is_admin' => false, 'name' => 'New Owner']);
+        $sheet = Sheet::create(['name' => 'Fresh sheet', 'created_by' => $user->id]);
+
+        $this->actingAs($user)->get(route('sheets.show', $sheet))->assertOk();
+
+        Livewire::actingAs($user)->test('sheet-grid', [
+            'sheetId' => $sheet->id,
+            'ownerFilter' => null,
+        ])->assertSet('ownerFilter', '');
+    }
+
     public function test_ticket_panel_closes_and_kanban_keeps_its_snapshot_on_the_board_root(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
