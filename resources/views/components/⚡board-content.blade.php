@@ -237,7 +237,7 @@ new class extends Component
             <a href="{{ route('boards.index') }}" class="text-sm text-gray-500 hover:text-gray-700">&larr; Boards</a>
             @if($board && auth()->user()?->is_admin)
                 <div x-data="{ editing: false }" class="mt-1">
-                    <h1 x-show="!editing" @click="editing = true; $nextTick(() => { $refs.boardTitle.focus(); $refs.boardTitle.select(); })" class="-mx-1 cursor-text rounded px-1 text-2xl font-semibold text-gray-900 hover:bg-gray-100" title="Click to rename board">{{ $board->name }}</h1>
+                    <h1 x-show="!editing" @click="editing = true; $nextTick(() => { $refs.boardTitle.focus(); $refs.boardTitle.select(); })" class="-mx-1 cursor-text rounded-lg px-1 text-2xl font-semibold tracking-tight text-gray-900 hover:bg-gray-100" title="Click to rename board">{{ $board->name }}</h1>
                     <input
                         x-show="editing" x-cloak x-ref="boardTitle" type="text" value="{{ $board->name }}"
                         @keydown.enter.prevent="$refs.boardTitle.blur()"
@@ -247,7 +247,7 @@ new class extends Component
                     />
                 </div>
             @else
-                <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $board?->name }}</h1>
+                <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{{ $board?->name }}</h1>
             @endif
             @if ($board?->description)
                 <p class="mt-1 text-sm text-gray-500">{{ $board->description }}</p>
@@ -277,7 +277,7 @@ new class extends Component
                         </div>
                     </div>
                     <label class="text-sm text-gray-600">Assignee</label>
-                    <select name="assignee" class="rounded-md border border-gray-300 text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" x-model="assigneeSelect">
+                    <select name="assignee" class="rounded-md border border-gray-300 bg-white text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" x-model="assigneeSelect">
                         <option value="">All</option>
                         <option value="unassigned">Unassigned</option>
                         @foreach($users as $u)
@@ -285,7 +285,7 @@ new class extends Component
                         @endforeach
                     </select>
                     <label class="text-sm text-gray-600">Type</label>
-                    <select name="type" class="rounded-md border border-gray-300 text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" x-model="typeSelect">
+                    <select name="type" class="rounded-md border border-gray-300 bg-white text-sm text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" x-model="typeSelect">
                         <option value="">All</option>
                         <option value="task">Task</option>
                         <option value="bug">Bug</option>
@@ -322,10 +322,11 @@ new class extends Component
                 ], fn ($v) => $v !== null && $v !== '');
             @endphp
             @if($view !== 'table')
-                <input type="search" wire:model.live.debounce.400ms="filterSearch" placeholder="Search" autocomplete="off" class="w-36 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                <input type="search" wire:model.live.debounce.400ms="filterSearch" placeholder="Search" autocomplete="off" class="w-36 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300" />
             @endif
             <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'kanban'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'kanban' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Kanban</a>
             <a href="{{ route('boards.show', array_merge($routeParams, ['view' => 'table'])) }}" class="rounded-md px-3 py-1.5 text-sm {{ $view === 'table' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">List</a>
+            <a href="{{ route('boards.analytics', $board) }}" class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Analytics</a>
             <div class="relative" x-data="{ open: false }">
                 <button type="button" @click="open = !open" class="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50" title="More">⋯</button>
                 <div x-show="open" @click.outside="open = false" x-cloak class="absolute right-0 z-50 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
@@ -374,7 +375,7 @@ new class extends Component
             'showDone' => $showDone,
         ], key('table-'.$boardId.'-'.$itemVisibility.'-'.($showDone ? '1' : '0')))
     @else
-        <div class="flex min-h-0 flex-1 flex-col gap-3 rounded-lg bg-gray-900 p-3 ring-1 ring-white/5">
+        <div class="flex min-h-0 flex-1 flex-col gap-3 rounded-xl bg-gray-900 p-3 ring-1 ring-white/10">
             <div class="flex min-h-0 flex-1 flex-col">
                 @livewire('kanban-view', [
                     'boardId' => $boardId,

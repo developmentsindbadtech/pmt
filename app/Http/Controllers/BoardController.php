@@ -6,6 +6,7 @@ use App\Models\Board;
 use App\Models\Column;
 use App\Models\Group;
 use App\Models\UserBoardFilter;
+use App\Models\UserNavPreference;
 use App\Services\MentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -32,6 +33,21 @@ class BoardController extends Controller
         $boards = $query->orderBy('name', 'asc')
             ->limit(50)
             ->get();
+
+        $prefs = UserNavPreference::query()
+            ->where('user_id', $user->id)
+            ->where('subject_type', 'board')
+            ->whereIn('subject_id', $boards->pluck('id')->all() ?: [0])
+            ->get()
+            ->keyBy('subject_id');
+
+        $boards->each(function (Board $board) use ($prefs) {
+            $pref = $prefs->get($board->id);
+            $board->setAttribute('nav_pinned', (bool) ($pref->pinned ?? false));
+            $board->setAttribute('nav_hidden', (bool) ($pref->hidden ?? false));
+        });
+
+        $boards = $boards->sortBy(fn (Board $board) => ($board->nav_pinned ? '0' : '1').mb_strtolower($board->name))->values();
 
         return view('boards.index', [
             'boards' => $boards,

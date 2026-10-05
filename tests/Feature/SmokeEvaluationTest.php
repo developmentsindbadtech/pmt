@@ -458,7 +458,7 @@ class SmokeEvaluationTest extends TestCase
         $board = $this->board('ArchiveBoard');
         $board->users()->attach($admin->id);
         $todo = Group::create(['board_id' => $board->id, 'name' => 'To Do', 'position' => 0]);
-        $done = Group::create(['board_id' => $board->id, 'name' => 'Done', 'position' => 1]);
+        $done = Group::create(['board_id' => $board->id, 'name' => 'Closed', 'position' => 1]);
 
         $activeItem = Item::create([
             'board_id' => $board->id,

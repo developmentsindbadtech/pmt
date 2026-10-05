@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Board;
 use App\Models\Sheet;
+use App\Services\NavList;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\View;
@@ -50,40 +51,31 @@ class AppServiceProvider extends ServiceProvider
                 $user = auth()->user();
                 $version = (int) Cache::get('pmt.nav.version', 1);
 
-                $view->with('sidebarBoards', Cache::remember(
-                    "pmt.nav.boards.{$user->id}.{$version}",
+                $boardNav = Cache::remember(
+                    "pmt.nav.boards.v2.{$user->id}.{$version}",
                     3600,
-                    function () use ($user) {
-                        $query = Board::query();
-                        if (! $user->is_admin) {
-                            $query->whereHas('users', function ($q) use ($user) {
-                                $q->where('users.id', $user->id);
-                            });
-                        }
-
-                        return $query->orderBy('name', 'asc')->limit(30)->get(['id', 'name']);
-                    }
-                ));
+                    fn () => NavList::boards($user)
+                );
+                $view->with('sidebarBoards', $boardNav['items']);
+                $view->with('hiddenBoardCount', $boardNav['hidden_count']);
                 $board = request()->route('board');
                 $view->with('currentBoardId', $board ? $board->id : null);
 
-                $view->with('sidebarSheets', Cache::remember(
-                    "pmt.nav.sheets.{$user->id}.{$version}",
+                $sheetNav = Cache::remember(
+                    "pmt.nav.sheets.v2.{$user->id}.{$version}",
                     3600,
-                    function () use ($user) {
-                        return Sheet::query()
-                            ->visibleTo($user)
-                            ->orderBy('name', 'asc')
-                            ->limit(30)
-                            ->get(['id', 'name']);
-                    }
-                ));
+                    fn () => NavList::sheets($user)
+                );
+                $view->with('sidebarSheets', $sheetNav['items']);
+                $view->with('hiddenSheetCount', $sheetNav['hidden_count']);
                 $sheet = request()->route('sheet');
                 $view->with('currentSheetId', $sheet ? $sheet->id : null);
             } else {
                 $view->with('sidebarBoards', collect());
+                $view->with('hiddenBoardCount', 0);
                 $view->with('currentBoardId', null);
                 $view->with('sidebarSheets', collect());
+                $view->with('hiddenSheetCount', 0);
                 $view->with('currentSheetId', null);
             }
         });

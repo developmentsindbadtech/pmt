@@ -357,7 +357,20 @@ class ItemController extends Controller
             abort(404);
         }
         $validated = $request->validate(['group_id' => 'required|exists:groups,id']);
+        $oldGroupId = $item->group_id;
         $item->update(['group_id' => $validated['group_id']]);
+        if ($request->user() && (int) $oldGroupId !== (int) $validated['group_id']) {
+            $oldGroup = $oldGroupId ? \App\Models\Group::find($oldGroupId) : null;
+            $newGroup = \App\Models\Group::find($validated['group_id']);
+            ItemActivity::create([
+                'item_id' => $item->id,
+                'user_id' => $request->user()->id,
+                'type' => 'status_changed',
+                'field' => 'group_id',
+                'old_value' => $oldGroup?->name ?? 'Unassigned',
+                'new_value' => $newGroup?->name ?? 'Unassigned',
+            ]);
+        }
         if ($request->wantsJson()) {
             return response()->json(['ok' => true]);
         }

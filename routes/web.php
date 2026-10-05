@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BoardController;
+use App\Http\Controllers\NavController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\UserController;
@@ -23,6 +25,8 @@ Route::get('/auth/microsoft', [AuthController::class, 'redirectToMicrosoft'])->n
 Route::get('/auth/microsoft/callback', [AuthController::class, 'handleMicrosoftCallback'])->name('auth.microsoft.callback');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('/nav/search', [NavController::class, 'search'])->name('nav.search');
+    Route::post('/nav/prefs', [NavController::class, 'update'])->name('nav.prefs');
     Route::get('/user-management', [UserManagementController::class, 'index'])->name('user-management.index');
     Route::put('/user-management/boards/{board}', [UserManagementController::class, 'update'])->name('user-management.update');
     Route::put('/user-management/sheets/{sheet}', [UserManagementController::class, 'updateSheet'])->name('user-management.update-sheet');
@@ -32,6 +36,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/boards/{board}/mentionable-users', [BoardController::class, 'mentionableUsers'])->name('api.boards.mentionable-users');
     Route::get('/api/users/{user}/photo', [UserController::class, 'getPhoto'])->name('api.users.photo');
     // Specific routes must come before general routes
+    Route::get('/boards/{board}/analytics', [AnalyticsController::class, 'board'])->name('boards.analytics');
     Route::get('/boards/{board}/ticket/{item}', [BoardController::class, 'showItem'])->name('boards.show.item');
     Route::get('/boards/{board}/export-csv', [BoardController::class, 'exportCsv'])->name('boards.export-csv');
     Route::get('/boards/{board}', [BoardController::class, 'show'])->name('boards.show');
@@ -54,6 +59,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sheets/create', [SheetController::class, 'create'])->name('sheets.create');
     Route::post('/sheets', [SheetController::class, 'store'])->name('sheets.store');
     Route::get('/api/sheets/{sheet}/mentionable-users', [SheetController::class, 'mentionableUsers'])->name('api.sheets.mentionable-users');
+    Route::get('/sheets/{sheet}/analytics', [AnalyticsController::class, 'sheet'])->name('sheets.analytics');
     Route::get('/sheets/{sheet}', [SheetController::class, 'show'])->name('sheets.show');
     Route::delete('/sheets/{sheet}', [SheetController::class, 'destroy'])->name('sheets.destroy');
 });

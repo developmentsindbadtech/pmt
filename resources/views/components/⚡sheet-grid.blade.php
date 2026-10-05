@@ -602,14 +602,7 @@ new class extends Component
     $titleColId = $titleCol?->id;
 
     $isDoneLabel = function (?string $label): bool {
-        if ($label === null || $label === '') {
-            return false;
-        }
-        $l = mb_strtolower($label);
-
-        return str_contains($l, 'done')
-            || str_contains($l, 'complete')
-            || str_contains($l, 'closed');
+        return \App\Models\Group::isDoneName($label);
     };
 
     // Soft chips: classes (app.css) + inline styles so colors still show if Vite assets are stale on deploy.
@@ -618,7 +611,7 @@ new class extends Component
             return ['class' => 'sheet-chip sheet-chip-empty', 'style' => 'background:transparent;color:#94a3b8'];
         }
         $l = mb_strtolower(trim($label));
-        if (str_contains($l, 'done') || str_contains($l, 'complete') || str_contains($l, 'closed')) {
+        if (\App\Models\Group::isDoneName($l)) {
             return ['class' => 'sheet-chip sheet-chip-status-done', 'style' => 'background:#ecfdf5;color:#047857'];
         }
         if (str_contains($l, 'stuck') || str_contains($l, 'block')) {

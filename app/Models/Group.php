@@ -13,12 +13,23 @@ class Group extends Model
         'name',
         'position',
         'wip_limit',
+        'finished',
     ];
 
     protected $casts = [
         'position' => 'integer',
         'wip_limit' => 'integer',
+        'finished' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Group $group) {
+            if (! array_key_exists('finished', $group->getAttributes())) {
+                $group->finished = static::isClosedColumn($group->name);
+            }
+        });
+    }
 
     public function board(): BelongsTo
     {
@@ -31,22 +42,25 @@ class Group extends Model
     }
 
     /**
-     * Terminal / "done" columns: Closed, Done, Complete, etc.
+     * Board SOP: only the Closed column is done.
+     */
+    public static function isClosedColumn(?string $name): bool
+    {
+        return mb_strtolower(trim((string) $name)) === 'closed';
+    }
+
+    /**
+     * Sheet rows use Done. Board tickets use Closed. Both mean the work is finished.
      */
     public static function isDoneName(?string $name): bool
     {
-        if ($name === null || trim($name) === '') {
-            return false;
-        }
-        $l = mb_strtolower(trim($name));
+        $label = mb_strtolower(trim((string) $name));
 
-        return str_contains($l, 'done')
-            || str_contains($l, 'complete')
-            || str_contains($l, 'closed');
+        return $label === 'closed' || $label === 'done';
     }
 
     public function isDone(): bool
     {
-        return static::isDoneName($this->name);
+        return static::isClosedColumn($this->name);
     }
 }

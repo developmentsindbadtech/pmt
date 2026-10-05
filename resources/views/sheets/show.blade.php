@@ -4,8 +4,9 @@
 
 @section('content')
     <div class="mx-auto h-full max-w-[1400px] overflow-y-auto px-4 py-4 sm:px-6 lg:px-8">
-        <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <a href="{{ route('sheets.index') }}" class="text-sm text-gray-500 hover:text-gray-800">&larr; Sheets</a>
+            <a href="{{ route('sheets.analytics', $sheet) }}" class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Analytics</a>
             @if ($sheet->description)
                 <span class="max-w-xl truncate text-sm text-gray-400" title="{{ $sheet->description }}">{{ $sheet->description }}</span>
             @endif

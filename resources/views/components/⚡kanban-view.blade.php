@@ -76,11 +76,7 @@ new class extends Component
         if ($this->itemVisibility === 'active' && ! $this->showDone) {
             $doneGroupIds = Group::query()
                 ->where('board_id', $this->boardId)
-                ->where(function ($q) {
-                    $q->whereRaw('LOWER(name) LIKE ?', ['%done%'])
-                        ->orWhereRaw('LOWER(name) LIKE ?', ['%complete%'])
-                        ->orWhereRaw('LOWER(name) LIKE ?', ['%closed%']);
-                })
+                ->whereRaw('LOWER(TRIM(name)) = ?', ['closed'])
                 ->pluck('id')
                 ->all();
         }
@@ -136,7 +132,7 @@ new class extends Component
 @endphp
 @if($board)
 <div
-    class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 border-b-2 border-b-slate-400/70 bg-gray-900 pb-1 [scrollbar-gutter:stable]"
+    class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 bg-gray-900 pb-1 [scrollbar-gutter:stable]"
     data-board-id="{{ $board->id }}"
     data-hide-done="{{ ($itemVisibility === 'active' && ! $showDone) ? '1' : '0' }}"
 >
@@ -144,25 +140,25 @@ new class extends Component
         @foreach($board->groups as $index => $group)
             @php $groupIsDone = $group->isDone(); @endphp
             <div
-                class="kanban-column flex min-h-0 min-w-[150px] flex-1 flex-col border-r border-gray-700 last:border-r-0"
+                class="kanban-column flex min-h-0 min-w-[150px] flex-1 flex-col border-r border-gray-700 bg-gray-800 last:border-r-0"
                 data-group-id="{{ $group->id }}"
                 data-is-done="{{ $groupIsDone ? '1' : '0' }}"
             >
-                <div class="shrink-0 border-b border-gray-700 bg-gray-800 px-3 py-2">
-                    <h3 class="truncate text-sm font-medium text-white">
+                <div class="shrink-0 border-b border-gray-700 bg-gray-800 px-3 py-2.5">
+                    <h3 class="truncate text-sm font-semibold tracking-tight text-white">
                         {{ $group->name }}
-                        <span class="text-gray-400">({{ $group->items->count() }})</span>
+                        <span class="font-medium text-gray-400">({{ $group->items->count() }})</span>
                         @if($group->wip_limit)
-                            <span class="{{ $group->items->count() > $group->wip_limit ? 'text-red-400' : 'text-gray-400' }}">/ {{ $group->wip_limit }}</span>
+                            <span class="font-medium {{ $group->items->count() > $group->wip_limit ? 'text-red-400' : 'text-gray-400' }}">/ {{ $group->wip_limit }}</span>
                         @endif
                         @if($groupIsDone && $itemVisibility === 'active' && ! $showDone)
                             <span class="ml-1 text-[10px] font-normal text-gray-500">hidden</span>
                         @endif
                     </h3>
                 </div>
-                <div class="kanban-column-body flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2 bg-gray-800">
+                <div class="kanban-column-body flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-gray-800 p-2">
                     @unless($isArchivedView)
-                    <form action="{{ route('items.store', $board) }}" method="POST" class="shrink-0 rounded-md border border-dashed border-gray-600 p-1.5" x-data="{ title: '' }">
+                    <form action="{{ route('items.store', $board) }}" method="POST" class="shrink-0 rounded-lg border border-dashed border-gray-600 p-1.5" x-data="{ title: '' }">
                         @csrf
                         <input type="hidden" name="group_id" value="{{ $group->id }}" />
                         <input type="hidden" name="view" value="kanban" />
@@ -172,7 +168,7 @@ new class extends Component
                                 <option value="bug">Bug</option>
                             </select>
                             <input type="text" name="name" placeholder="Add" required class="min-w-0 flex-1 rounded border-0 bg-transparent text-[13px] text-gray-200 placeholder-gray-500 focus:ring-0" x-model="title" />
-                            <button type="submit" x-show="title.trim().length > 0" x-cloak x-transition class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-500" title="Create task">
+                            <button type="submit" x-show="title.trim().length > 0" x-cloak x-transition class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white hover:bg-emerald-500" title="Create task">
                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             </button>
                         </div>
@@ -180,12 +176,12 @@ new class extends Component
                     @endunless
                     @foreach($group->items as $item)
                         <div
-                            class="kanban-item group cursor-grab rounded-md border border-gray-600/80 bg-gray-700/90 px-2 py-1.5 transition-opacity duration-200 active:cursor-grabbing hover:border-gray-500"
+                            class="kanban-item group cursor-grab rounded-lg border border-gray-600/80 bg-gray-700/90 px-2.5 py-2 transition-opacity duration-200 active:cursor-grabbing hover:border-gray-500"
                             draggable="{{ $isArchivedView ? 'false' : 'true' }}"
                             data-item-id="{{ $item->id }}"
                         >
                             <div class="flex items-center justify-between gap-1">
-                                <button type="button" class="js-kanban-open-item flex min-w-0 flex-1 items-center gap-1 truncate text-left text-[13px] leading-snug text-gray-200 hover:text-white hover:underline focus:outline-none" data-item-id="{{ $item->id }}" data-href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" title="{{ $item->name }}" aria-label="Open item #{{ $item->number }}"><span class="shrink-0 text-gray-400">#{{ $item->number }}</span>@if($item->parent_id)<span class="shrink-0 text-gray-400" title="Has parent">↳</span>@endif<span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></button>
+                                <button type="button" class="js-kanban-open-item flex min-w-0 flex-1 items-center gap-1 truncate text-left text-[13px] font-medium leading-snug tracking-tight text-gray-100 hover:text-white hover:underline focus:outline-none" data-item-id="{{ $item->id }}" data-href="{{ route('boards.show.item', ['board' => $board->id, 'item' => $item->number, 'view' => 'kanban']) }}" title="{{ $item->name }}" aria-label="Open item #{{ $item->number }}"><span class="shrink-0 font-normal text-gray-400">#{{ $item->number }}</span>@if($item->parent_id)<span class="shrink-0 text-gray-400" title="Has parent">↳</span>@endif<span class="min-w-0 flex-1 truncate">{{ $item->name }}</span></button>
                                 <button
                                     type="button"
                                     wire:click="{{ $isArchivedView ? 'unarchiveItem' : 'archiveItem' }}({{ $item->id }})"
@@ -195,23 +191,23 @@ new class extends Component
                                     aria-label="{{ $isArchivedView ? 'Restore' : 'Archive' }} item #{{ $item->number }}"
                                 >{{ $isArchivedView ? '↩' : 'Archive' }}</button>
                             </div>
-                            <div class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]">
+                            <div class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]">
                                 @if($item->item_type === 'bug')
-                                    <span class="text-red-400">Bug</span>
+                                    <span class="font-medium text-red-400">Bug</span>
                                 @else
-                                    <span class="text-amber-400">Task</span>
+                                    <span class="font-medium text-amber-400">Task</span>
                                 @endif
                                 @if($item->dev_tag)
                                     @php $devTagLabel = \App\Models\Item::devTagLabel($item->dev_tag); @endphp
                                     @if($devTagLabel)
-                                        <span class="rounded bg-violet-500/25 px-1 py-px text-violet-200">{{ $devTagLabel }}</span>
+                                        <span class="rounded-full bg-violet-500/25 px-1.5 py-px text-violet-200">{{ $devTagLabel }}</span>
                                     @endif
                                 @endif
                                 @if(($item->children_count ?? 0) > 0)
                                     <span class="text-gray-400" title="Sub-items">{{ $item->children_count }} sub</span>
                                 @endif
                                 @if(($item->priority ?? 'medium') === 'critical' || ($item->priority ?? 'medium') === 'high')
-                                    <span class="rounded px-1 {{ ($item->priority ?? '') === 'critical' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300' }}">{{ ucfirst($item->priority ?? '') }}</span>
+                                    <span class="rounded-full px-1.5 {{ ($item->priority ?? '') === 'critical' ? 'bg-red-500/30 text-red-300' : 'bg-amber-500/30 text-amber-300' }}">{{ ucfirst($item->priority ?? '') }}</span>
                                 @endif
                                 @if($item->due_at)
                                     <span class="{{ $item->isOverdue() ? 'text-red-400' : 'text-gray-400' }}" title="Due {{ $item->due_at->format('M j, Y') }}">{{ $item->due_at->format('M j') }}</span>
@@ -222,7 +218,7 @@ new class extends Component
                                         $nameParts = explode(' ', trim($assignee->name));
                                         $initials = strtoupper(substr($nameParts[0], 0, 1) . (count($nameParts) > 1 ? substr($nameParts[count($nameParts) - 1], 0, 1) : ''));
                                     @endphp
-                                    <div class="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-500 text-[9px] font-medium text-white" title="{{ $assignee->name }}">{{ $initials }}</div>
+                                    <div class="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-500 text-[9px] font-medium text-white" title="{{ $assignee->name }}">{{ $initials }}</div>
                                 @else
                                     <span class="ml-auto text-gray-500">Unassigned</span>
                                 @endif
@@ -344,7 +340,7 @@ new class extends Component
 <style>
 .js-kanban-board {
     scrollbar-width: thin;
-    scrollbar-color: rgb(107 114 128) rgb(17 24 39);
+    scrollbar-color: rgb(75 85 99) rgb(17 24 39);
 }
 
 .js-kanban-board::-webkit-scrollbar {

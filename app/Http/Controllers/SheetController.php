@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Sheet;
 use App\Models\SheetColumn;
+use App\Models\UserNavPreference;
 use App\Services\MentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,21 @@ class SheetController extends Controller
             ->orderBy('name')
             ->limit(100)
             ->get();
+
+        $prefs = UserNavPreference::query()
+            ->where('user_id', $user->id)
+            ->where('subject_type', 'sheet')
+            ->whereIn('subject_id', $sheets->pluck('id')->all() ?: [0])
+            ->get()
+            ->keyBy('subject_id');
+
+        $sheets->each(function (Sheet $sheet) use ($prefs) {
+            $pref = $prefs->get($sheet->id);
+            $sheet->setAttribute('nav_pinned', (bool) ($pref->pinned ?? false));
+            $sheet->setAttribute('nav_hidden', (bool) ($pref->hidden ?? false));
+        });
+
+        $sheets = $sheets->sortBy(fn (Sheet $sheet) => ($sheet->nav_pinned ? '0' : '1').mb_strtolower($sheet->name))->values();
 
         return view('sheets.index', [
             'sheets' => $sheets,

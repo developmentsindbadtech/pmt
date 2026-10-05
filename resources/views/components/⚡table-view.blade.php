@@ -382,7 +382,7 @@ new class extends Component
     $allVisibleSelected = ! empty($visibleItemIds) && $selectedVisibleCount === count($visibleItemIds);
 @endphp
 <div>
-<div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+<div class="rounded-xl border border-gray-200 bg-white shadow-sm">
 @if($board)
     {{-- Minimal toolbar: add item + search --}}
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">

@@ -13,12 +13,22 @@ class SheetColumn extends Model
         'type',
         'options',
         'position',
+        'settings',
     ];
 
     protected $casts = [
         'options' => 'array',
         'position' => 'integer',
+        'settings' => 'array',
     ];
+
+    public function statusIsFinished(?string $label): bool
+    {
+        if ($label === null || trim($label) === '') {
+            return false;
+        }
+        return Group::isDoneName($label);
+    }
 
     public function sheet(): BelongsTo
     {
