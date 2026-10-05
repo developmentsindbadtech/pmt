@@ -18,9 +18,16 @@ pipeline {
             when { branch 'main' }
             steps {
                 sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
+                    // The app directory is owned by www-data after the last deploy, so a plain
+                    // git pull cannot create .git/index.lock. Take ownership for the pull, then
+                    // give storage and bootstrap/cache back to PHP-FPM. Fail if HEAD did not move.
                     sh '''
-                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
-                            "bash /home/bong/pmt.sh"
+                        set -eu
+                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 "sudo -n chown -R jenkins-deploy-key:www-data /var/www/pmt-prod && bash /home/bong/pmt.sh && sudo -n chown -R www-data:www-data /var/www/pmt-prod/storage /var/www/pmt-prod/bootstrap/cache && sudo -n chmod -R ug+rwX /var/www/pmt-prod/storage /var/www/pmt-prod/bootstrap/cache"
+                        REMOTE=$(ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 "git -C /var/www/pmt-prod rev-parse HEAD")
+                        echo "Server HEAD: $REMOTE"
+                        echo "Expected: $GIT_COMMIT"
+                        test "$REMOTE" = "$GIT_COMMIT"
                     '''
                 }
             }
