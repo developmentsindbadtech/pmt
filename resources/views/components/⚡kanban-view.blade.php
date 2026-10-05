@@ -3,6 +3,7 @@
 use App\Models\Board;
 use App\Models\Group;
 use App\Models\Item;
+use Livewire\Attributes\Reactive;
 use Livewire\Component;
 
 new class extends Component
@@ -18,7 +19,8 @@ new class extends Component
     /** @var array<int> Filter by status/group IDs — only show these columns (empty = all) */
     public array $filterGroupIds = [];
 
-    /** From parent; parent uses wire:key including this value so each change remounts with correct filter. */
+    /** Updated from the parent without remounting the board. */
+    #[Reactive]
     public string $filterSearch = '';
 
     /** active | archived */
@@ -74,14 +76,21 @@ new class extends Component
         if ($this->itemVisibility === 'active' && ! $this->showDone) {
             $doneGroupIds = Group::query()
                 ->where('board_id', $this->boardId)
-                ->get()
-                ->filter(fn (Group $g) => $g->isDone())
+                ->where(function ($q) {
+                    $q->whereRaw('LOWER(name) LIKE ?', ['%done%'])
+                        ->orWhereRaw('LOWER(name) LIKE ?', ['%complete%'])
+                        ->orWhereRaw('LOWER(name) LIKE ?', ['%closed%']);
+                })
                 ->pluck('id')
                 ->all();
         }
 
         $groupsQuery = fn ($q) => $q->orderBy('position')->when(! empty($this->filterGroupIds), fn ($sub) => $sub->whereIn('id', $this->filterGroupIds))->with(['items' => function ($q) use ($doneGroupIds) {
-            $q->orderBy('position')->limit(150)->with('assignee')->withCount('children');
+            $q->select(['id', 'board_id', 'group_id', 'parent_id', 'number', 'name', 'item_type', 'priority', 'assignee_id', 'due_at', 'dev_tag', 'position'])
+                ->orderBy('position')
+                ->limit(150)
+                ->with('assignee:id,name')
+                ->withCount('children');
             if ($this->itemVisibility === 'archived') {
                 $q->archived();
             } else {
@@ -158,7 +167,11 @@ new class extends Component
                         <input type="hidden" name="group_id" value="{{ $group->id }}" />
                         <input type="hidden" name="view" value="kanban" />
                         <div class="flex items-center gap-1">
-                            <input type="text" name="name" placeholder="+ Add item" required class="min-w-0 flex-1 rounded border-0 bg-transparent text-[13px] text-gray-200 placeholder-gray-500 focus:ring-0" x-model="title" />
+                            <select name="item_type" class="shrink-0 rounded border-0 bg-transparent py-0 pl-0 pr-5 text-[11px] text-gray-300 focus:ring-0" title="Task or bug">
+                                <option value="task">Task</option>
+                                <option value="bug">Bug</option>
+                            </select>
+                            <input type="text" name="name" placeholder="Add" required class="min-w-0 flex-1 rounded border-0 bg-transparent text-[13px] text-gray-200 placeholder-gray-500 focus:ring-0" x-model="title" />
                             <button type="submit" x-show="title.trim().length > 0" x-cloak x-transition class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-500" title="Create task">
                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             </button>
@@ -206,18 +219,10 @@ new class extends Component
                                 @if($item->assignee)
                                     @php
                                         $assignee = $item->assignee;
-                                        $photoUrl = route('api.users.photo', $assignee);
                                         $nameParts = explode(' ', trim($assignee->name));
                                         $initials = strtoupper(substr($nameParts[0], 0, 1) . (count($nameParts) > 1 ? substr($nameParts[count($nameParts) - 1], 0, 1) : ''));
                                     @endphp
-                                    <div class="ml-auto flex min-w-0 items-center gap-1" title="{{ $assignee->name }}">
-                                        <div class="relative h-4 w-4 shrink-0 overflow-hidden rounded-full bg-gray-500">
-                                            <img src="{{ $photoUrl }}" alt="{{ $assignee->name }}" draggable="false" class="h-full w-full object-cover select-none" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                                            <div class="hidden h-full w-full items-center justify-center bg-gray-600 text-[10px] font-medium text-white">
-                                                {{ $initials }}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <div class="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-500 text-[9px] font-medium text-white" title="{{ $assignee->name }}">{{ $initials }}</div>
                                 @else
                                     <span class="ml-auto text-gray-500">Unassigned</span>
                                 @endif

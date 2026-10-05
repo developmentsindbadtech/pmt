@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Storage;
 
 class Item extends Model
@@ -120,6 +121,11 @@ class Item extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(ItemActivity::class)->orderByDesc('created_at');
+    }
+
+    public function latestActivity(): HasOne
+    {
+        return $this->hasOne(ItemActivity::class)->latestOfMany();
     }
 
     public function itemColumnValues(): HasMany

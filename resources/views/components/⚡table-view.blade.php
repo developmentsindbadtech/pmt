@@ -173,9 +173,12 @@ new class extends Component
         $totalItems = $countQuery->count();
         
         // Eager load relationships AFTER sorting is applied
-        $itemsQuery->with(['group', 'assignee', 'creator', 'activities' => function ($q) {
-            $q->with('user')->orderByDesc('created_at')->limit(1);
-        }])->withCount('children');
+        $itemsQuery->with([
+            'group:id,name',
+            'assignee:id,name',
+            'creator:id,name',
+            'latestActivity.user:id,name',
+        ])->withCount('children');
         
         // Paginate only if more than 20 items
         if ($totalItems > 20) {
@@ -387,7 +390,11 @@ new class extends Component
         <form action="{{ route('items.store', $board) }}" method="POST" class="flex items-center gap-2">
             @csrf
             <input type="hidden" name="view" value="table" />
-            <input type="text" name="name" placeholder="New item name" required class="w-56 rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400" />
+            <select name="item_type" class="rounded border border-gray-200 px-2 py-2 text-sm text-gray-700">
+                <option value="task">Task</option>
+                <option value="bug">Bug</option>
+            </select>
+            <input type="text" name="name" placeholder="Title" required class="w-56 rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400" />
             <button type="submit" class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Add</button>
         </form>
         @else
@@ -593,17 +600,11 @@ new class extends Component
                             @if($item->assignee)
                                 @php
                                     $assignee = $item->assignee;
-                                    $photoUrl = route('api.users.photo', $assignee);
                                     $nameParts = explode(' ', trim($assignee->name));
                                     $initials = strtoupper(substr($nameParts[0], 0, 1) . (count($nameParts) > 1 ? substr($nameParts[count($nameParts) - 1], 0, 1) : ''));
                                 @endphp
                                 <div class="flex items-center gap-2">
-                                    <div class="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-gray-300">
-                                        <img src="{{ $photoUrl }}" alt="{{ $assignee->name }}" class="h-full w-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                                        <div class="hidden h-full w-full items-center justify-center bg-gray-400 text-xs font-medium text-white">
-                                            {{ $initials }}
-                                        </div>
-                                    </div>
+                                    <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-400 text-[10px] font-medium text-white">{{ $initials }}</div>
                                     <span>{{ $assignee->name }}</span>
                                 </div>
                             @else
@@ -619,22 +620,15 @@ new class extends Component
                         </td>
                         <td class="px-2 py-2 text-sm text-gray-600">
                             @php
-                                $lastActivity = $item->activities->first();
-                                $updatedBy = $lastActivity?->user ?? $item->creator;
+                                $updatedBy = $item->latestActivity?->user ?? $item->creator;
                             @endphp
                             @if($updatedBy)
                                 @php
-                                    $photoUrl = route('api.users.photo', $updatedBy);
                                     $nameParts = explode(' ', trim($updatedBy->name));
                                     $initials = strtoupper(substr($nameParts[0], 0, 1) . (count($nameParts) > 1 ? substr($nameParts[count($nameParts) - 1], 0, 1) : ''));
                                 @endphp
                                 <div class="flex items-center gap-2">
-                                    <div class="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-gray-300">
-                                        <img src="{{ $photoUrl }}" alt="{{ $updatedBy->name }}" class="h-full w-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                                        <div class="hidden h-full w-full items-center justify-center bg-gray-400 text-xs font-medium text-white">
-                                            {{ $initials }}
-                                        </div>
-                                    </div>
+                                    <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-400 text-[10px] font-medium text-white">{{ $initials }}</div>
                                     <span>{{ $updatedBy->name }}</span>
                                 </div>
                             @else

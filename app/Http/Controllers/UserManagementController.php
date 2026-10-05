@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Board;
 use App\Models\Sheet;
 use App\Models\User;
+use App\Providers\AppServiceProvider;
 use App\Services\AccessGrantNotifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,7 @@ class UserManagementController extends Controller
         $userIds = array_map('intval', $validated['user_ids'] ?? []);
         $previousIds = $board->users()->pluck('users.id')->map(fn ($id) => (int) $id)->all();
         $board->users()->sync($userIds);
+        AppServiceProvider::bustNavCache();
 
         app(AccessGrantNotifier::class)->notifyNewBoardMembers(
             $board,
@@ -114,6 +116,7 @@ class UserManagementController extends Controller
 
         $previousIds = $sheet->users()->pluck('users.id')->map(fn ($id) => (int) $id)->all();
         $sheet->users()->sync($assignable);
+        AppServiceProvider::bustNavCache();
 
         app(AccessGrantNotifier::class)->notifyNewSheetMembers(
             $sheet,

@@ -37,7 +37,7 @@
                         <button type="button" @click="expanded = !expanded" class="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700" title="{{ __('Toggle sidebar') }}" aria-label="Toggle sidebar">
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                         </button>
-                        <a href="{{ route('boards.index') }}" class="text-xl font-semibold text-gray-800">Project Management Tool</a>
+                        <a href="{{ route('boards.index') }}" class="text-xl font-semibold text-gray-800">PMT</a>
                     </div>
                     <div class="flex items-center gap-4">
                         {{-- User info: name, optional avatar, and Admin/User from Employee type (not status) --}}
