@@ -54,7 +54,7 @@ REMOTE
                     // Note: pmt.sh already runs migrate; this stage is a safety net after deploy.
                     sh '''
                         ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
-                            'APP_DIR="${PMT_APP_DIR:-/var/www/pmt-prod}"; cd "$APP_DIR" && php artisan migrate --force --no-interaction'
+                            'cd /var/www/pmt-prod && sudo -n -u www-data php artisan migrate --force --no-interaction'
                     '''
                 }
             }
@@ -69,7 +69,7 @@ REMOTE
                     // Prefer on server (once, as root): chown -R www-data:www-data storage bootstrap/cache
                     sh '''
                         ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
-                            'APP_DIR="${PMT_APP_DIR:-/var/www/pmt-prod}"; cd "$APP_DIR" && php artisan optimize:clear || true'
+                            'cd /var/www/pmt-prod && sudo -n -u www-data php artisan optimize:clear'
                     '''
                 }
             }
