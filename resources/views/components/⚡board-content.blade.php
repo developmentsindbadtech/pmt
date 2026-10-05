@@ -392,16 +392,26 @@ new class extends Component
     @endif
 
     @if($selectedItemId)
-        {{-- Backdrop: dims and freezes the board; click to close --}}
+        {{-- Hide immediately on click so a failed Livewire update cannot leave this overlay blocking the board. --}}
+        <div
+            wire:key="detail-shell"
+            x-data="{
+                dismiss() {
+                    this.$root.style.display = 'none';
+                    this.$root.style.pointerEvents = 'none';
+                    const url = @js(route('boards.show', ['board' => $board, 'view' => $view]));
+                    if (url && history.replaceState) history.replaceState({}, '', url);
+                    $wire.closePanel();
+                }
+            }"
+            x-on:keydown.escape.window="dismiss()"
+        >
         <div
             class="fixed inset-0 z-40 bg-black/40 cursor-default"
             role="button"
             tabindex="0"
             aria-label="Close panel"
-            data-board-url="{{ route('boards.show', ['board' => $board, 'view' => $view]) }}"
-            onclick="var u = this.getAttribute('data-board-url'); if (u && history.replaceState) history.replaceState({}, '', u)"
-            wire:click="closePanel"
-            wire:key="detail-backdrop"
+            x-on:click="dismiss()"
         ></div>
         {{-- Right-side panel: minimalist, compact, professional --}}
         <div class="item-detail-panel fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-gray-200 bg-gray-50/95 shadow-xl backdrop-blur-sm" role="dialog" aria-label="Item details">
@@ -410,13 +420,13 @@ new class extends Component
                     <h2 class="text-sm font-semibold tracking-tight text-gray-800">
                         {{ $item ? ($item->isBug() ? 'Bug' : 'Task') . ' #' . $item->number : '' }}
                     </h2>
-                    <button type="button" wire:click="closePanel" data-board-url="{{ route('boards.show', ['board' => $board, 'view' => $view]) }}" onclick="var u = this.getAttribute('data-board-url'); if (u && history.replaceState) history.replaceState({}, '', u)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-gray-50 text-base font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-1 transition-colors" title="Close" aria-label="Close">&times;</button>
+                    <button type="button" x-on:click="dismiss()" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-gray-50 text-base font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-1 transition-colors" title="Close" aria-label="Close">&times;</button>
                 </div>
                 @if($item && $board)
                 <div class="flex flex-col flex-1 min-h-0" x-data="{ 
                     init() {
                         this.$watch('$wire.activeTab', () => {
-                            this.$refs.scrollContainer.scrollTop = 0;
+                            if (this.$refs.scrollContainer) this.$refs.scrollContainer.scrollTop = 0;
                         });
                     }
                 }">
@@ -867,8 +877,8 @@ new class extends Component
                 @endif
             </div>
         </div>
+        </div>
     @endif
-</div>
 
 <script>
 (function() {
@@ -1172,3 +1182,4 @@ new class extends Component
     background: rgb(107 114 128);
 }
 </style>
+</div>

@@ -130,12 +130,15 @@ new class extends Component
     $board = $this->board;
     $isArchivedView = $itemVisibility === 'archived';
 @endphp
-@if($board)
+{{-- Single root, and it must be the first node. An @if before it makes Livewire
+     attach the component snapshot to an inner element; the next update then
+     wipes that snapshot and the page stops accepting clicks until refresh. --}}
 <div
     class="js-kanban-board flex h-full min-h-[320px] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-gray-700 bg-gray-900 pb-1 [scrollbar-gutter:stable]"
-    data-board-id="{{ $board->id }}"
-    data-hide-done="{{ ($itemVisibility === 'active' && ! $showDone) ? '1' : '0' }}"
+    data-board-id="{{ $board->id ?? '' }}"
+    data-hide-done="{{ ($board && $itemVisibility === 'active' && ! $showDone) ? '1' : '0' }}"
 >
+@if($board)
     <div class="flex min-h-0 min-w-full flex-1">
         @foreach($board->groups as $index => $group)
             @php $groupIsDone = $group->isDone(); @endphp
@@ -229,12 +232,6 @@ new class extends Component
             </div>
         @endforeach
     </div>
-</div>
-@else
-<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">Board not found.</div>
-@endif
-
-@if($board)
 <script>
 (function() {
     var draggedCard = null;
@@ -335,6 +332,8 @@ new class extends Component
     }
 })();
 </script>
+@else
+<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">Board not found.</div>
 @endif
 
 <style>
@@ -360,3 +359,4 @@ new class extends Component
     background: rgb(107 114 128);
 }
 </style>
+</div>

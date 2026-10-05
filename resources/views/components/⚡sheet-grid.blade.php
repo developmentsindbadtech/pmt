@@ -26,6 +26,9 @@ new class extends Component
     /** Quick filter: open (default) | done | mine | all | archived */
     public string $filter = 'open';
 
+    /** From analytics: a user id, or "unassigned". Empty means everyone. */
+    public string $ownerFilter = '';
+
     /** Row detail sidebar (description + comments). */
     public ?int $selectedRowId = null;
 
@@ -36,6 +39,11 @@ new class extends Component
     public function setFilter(string $filter): void
     {
         $this->filter = in_array($filter, ['open', 'done', 'mine', 'all', 'archived'], true) ? $filter : 'open';
+    }
+
+    public function clearOwnerFilter(): void
+    {
+        $this->ownerFilter = '';
     }
 
     public function archiveRow($rowId): void
@@ -357,9 +365,13 @@ new class extends Component
         $sheet->update(['name' => mb_substr($name, 0, 255)]);
     }
 
-    public function mount(int $sheetId): void
+    public function mount(int $sheetId, ?string $ownerFilter = null): void
     {
         $this->sheetId = $sheetId;
+        $ownerFilter = trim((string) $ownerFilter);
+        if ($ownerFilter === 'unassigned' || ctype_digit($ownerFilter)) {
+            $this->ownerFilter = $ownerFilter;
+        }
 
         $user = auth()->user();
         if ($user && ! $user->is_admin) {
@@ -705,6 +717,12 @@ new class extends Component
         if ($filter === 'mine' && ($ownerVal === '' || $ownerVal !== $authId)) {
             continue;
         }
+        if ($ownerFilter === 'unassigned' && $ownerVal !== '') {
+            continue;
+        }
+        if ($ownerFilter !== '' && $ownerFilter !== 'unassigned' && $ownerVal !== $ownerFilter) {
+            continue;
+        }
 
         $n++;
         $orderedRows[] = ['row' => $top, 'depth' => 0, 'label' => (string) $n];
@@ -819,6 +837,18 @@ new class extends Component
                         >{{ $label }}</button>
                     @endforeach
                 </div>
+
+                @if($ownerFilter !== '')
+                    @php
+                        $ownerFilterName = $ownerFilter === 'unassigned'
+                            ? 'Unassigned'
+                            : (\App\Models\User::query()->whereKey((int) $ownerFilter)->value('name') ?: 'This person');
+                    @endphp
+                    <span class="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                        {{ $ownerFilterName }}
+                        <button type="button" wire:click="clearOwnerFilter" class="text-blue-500 hover:text-blue-800" title="Show everyone">&times;</button>
+                    </span>
+                @endif
 
                 @if($sortColId && $sortCol)
                     <span class="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">

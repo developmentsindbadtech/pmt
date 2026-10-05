@@ -21,6 +21,6 @@
             >{{ session('success') }}</div>
         @endif
 
-        @livewire('sheet-grid', ['sheetId' => $sheet->id])
+        @livewire('sheet-grid', ['sheetId' => $sheet->id, 'ownerFilter' => request('owner')])
     </div>
 @endsection

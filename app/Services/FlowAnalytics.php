@@ -155,7 +155,10 @@ class FlowAnalytics
             approximate: $approximate,
             statuses: $statuses->all(),
             weeks: self::weeks($active, $closes, $from, $to),
-            people: self::people($open, $names, fn (Item $item) => $item->assignee_id, $columnEntered, fn (Item $item) => $item->due_at),
+            people: self::linkPeople(
+                self::people($open, $names, fn (Item $item) => $item->assignee_id, $columnEntered, fn (Item $item) => $item->due_at),
+                fn (int $id) => route('boards.show', ['board' => $board, 'assignee' => $id === 0 ? 'unassigned' : $id]),
+            ),
             attention: $attention,
             archived: $items->filter(fn (Item $item) => $item->archived_at !== null && $inRange($item->created_at))->count(),
             openHint: $open->where('item_type', 'bug')->count().' bugs · '.$open->where('item_type', '!=', 'bug')->count().' tasks',
@@ -317,12 +320,15 @@ class FlowAnalytics
             approximate: 0,
             statuses: $statuses,
             weeks: self::weeks($openedSource, $closes, $from, $to),
-            people: self::people(
-                $open,
-                $names,
-                fn (array $row) => $row['owner'],
-                fn (array $row) => $row['created_at'],
-                fn (array $row) => $row['due'],
+            people: self::linkPeople(
+                self::people(
+                    $open,
+                    $names,
+                    fn (array $row) => $row['owner'],
+                    fn (array $row) => $row['created_at'],
+                    fn (array $row) => $row['due'],
+                ),
+                fn (int $id) => route('sheets.show', ['sheet' => $sheet, 'owner' => $id === 0 ? 'unassigned' : $id]),
             ),
             attention: $attention,
             archived: $rows->filter(fn (SheetRow $row) => $row->archived_at !== null)->count(),
@@ -734,7 +740,7 @@ class FlowAnalytics
     /**
      * @param  Collection<int, mixed>  $open
      * @param  Collection<int|string, string>  $names
-     * @return array<int, array{name: string, open: int, overdue: int, oldest: string}>
+     * @return array<int, array{id: int, name: string, open: int, overdue: int, oldest: string}>
      */
     private static function people(Collection $open, Collection $names, callable $ownerId, callable $createdAt, callable $dueAt): array
     {
@@ -744,6 +750,7 @@ class FlowAnalytics
             $oldest = $rows->max(fn ($row) => self::daysBetween($createdAt($row), now()));
 
             return [
+                'id' => (int) $id,
                 'name' => ((int) $id) === 0 ? 'Unassigned' : ($names[(int) $id] ?? 'Someone'),
                 'open' => $rows->count(),
                 'overdue' => $rows->filter(fn ($row) => self::isOverdue($dueAt($row)))->count(),
@@ -754,11 +761,26 @@ class FlowAnalytics
             ['sort', 'asc'],
             ['open', 'desc'],
         ])->map(fn (array $row) => [
+            'id' => $row['id'],
             'name' => $row['name'],
             'open' => $row['open'],
             'overdue' => $row['overdue'],
             'oldest' => $row['oldest'],
         ])->values()->all();
+    }
+
+    /**
+     * @param  array<int, array{id: int, name: string, open: int, overdue: int, oldest: string}>  $people
+     * @param  callable(int): string  $urlFor
+     * @return array<int, array{id: int, name: string, open: int, overdue: int, oldest: string, url: string}>
+     */
+    private static function linkPeople(array $people, callable $urlFor): array
+    {
+        return array_map(function (array $person) use ($urlFor) {
+            $person['url'] = $urlFor((int) $person['id']);
+
+            return $person;
+        }, $people);
     }
 
     private static function isOverdue(mixed $due): bool

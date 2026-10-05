@@ -182,7 +182,13 @@
                         <tbody>
                             @foreach ($report['people'] as $person)
                                 <tr class="border-t border-slate-100">
-                                    <td class="py-2 text-slate-800">{{ $person['name'] }}</td>
+                                    <td class="py-2 text-slate-800">
+                                        @if(! empty($person['url']))
+                                            <a href="{{ $person['url'] }}" class="font-medium text-slate-800 hover:text-blue-700" title="Show open work for {{ $person['name'] }}">{{ $person['name'] }}</a>
+                                        @else
+                                            {{ $person['name'] }}
+                                        @endif
+                                    </td>
                                     <td class="py-2 text-right tabular-nums text-slate-700">{{ $person['open'] }}</td>
                                     <td class="py-2 text-right tabular-nums {{ $person['overdue'] > 0 ? 'text-rose-700' : 'text-slate-700' }}">{{ $person['overdue'] }}</td>
                                     <td class="py-2 text-right tabular-nums text-slate-700">{{ $person['oldest'] }}</td>

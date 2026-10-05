@@ -12,6 +12,7 @@ use App\Models\SheetRow;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class AnalyticsTest extends TestCase
@@ -102,7 +103,8 @@ class AnalyticsTest extends TestCase
             ->assertSee('Time in the current column')
             ->assertSee('A ticket in Closed is done')
             ->assertSee('name="from"', false)
-            ->assertSee('Status');
+            ->assertSee('Status')
+            ->assertSee(route('boards.show', ['board' => $board, 'assignee' => $owner->id]), false);
 
         $this->actingAs($owner)->get(route('boards.analytics', $board).'?from=2020-01-01&to=2020-01-02')
             ->assertOk()
@@ -161,8 +163,71 @@ class AnalyticsTest extends TestCase
             ->assertSee('Stuck')
             ->assertSee('Rows opened')
             ->assertSee('A row marked Done is done')
-            ->assertSee('name="from"', false);
+            ->assertSee('name="from"', false)
+            ->assertSee(route('sheets.show', ['sheet' => $sheet, 'owner' => $user->id]), false);
 
         Carbon::setTestNow();
+    }
+
+    public function test_person_filter_on_a_sheet_shows_only_that_owner(): void
+    {
+        $nora = User::factory()->create(['is_admin' => true, 'name' => 'Nora']);
+        $sam = User::factory()->create(['name' => 'Sam Owner']);
+        $sheet = Sheet::create(['name' => 'Launch checklist', 'created_by' => $nora->id]);
+        $title = SheetColumn::create(['sheet_id' => $sheet->id, 'name' => 'Title', 'type' => 'text', 'position' => 0]);
+        $owner = SheetColumn::create(['sheet_id' => $sheet->id, 'name' => 'Owner', 'type' => 'person', 'position' => 1]);
+        SheetRow::create([
+            'sheet_id' => $sheet->id,
+            'position' => 0,
+            'values' => [(string) $title->id => 'Nora row', (string) $owner->id => (string) $nora->id],
+        ]);
+        SheetRow::create([
+            'sheet_id' => $sheet->id,
+            'position' => 1,
+            'values' => [(string) $title->id => 'Sam row', (string) $owner->id => (string) $sam->id],
+        ]);
+
+        Livewire::actingAs($nora)->test('sheet-grid', [
+            'sheetId' => $sheet->id,
+            'ownerFilter' => (string) $sam->id,
+        ])
+            ->assertSee('Sam row')
+            ->assertDontSee('Nora row')
+            ->call('clearOwnerFilter')
+            ->assertSee('Nora row')
+            ->assertSee('Sam row');
+    }
+
+    public function test_ticket_panel_closes_and_kanban_keeps_its_snapshot_on_the_board_root(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $board = Board::create(['name' => 'Panel board', 'view_type' => 'kanban', 'created_by' => $admin->id]);
+        $group = Group::create(['board_id' => $board->id, 'name' => 'New', 'position' => 0]);
+        $item = Item::create([
+            'board_id' => $board->id,
+            'group_id' => $group->id,
+            'number' => 1,
+            'name' => 'Stuck overlay',
+            'item_type' => 'task',
+            'created_by' => $admin->id,
+        ]);
+
+        $html = Livewire::actingAs($admin)->test('kanban-view', ['boardId' => $board->id])->html();
+        $snapshotAt = strpos($html, 'wire:snapshot');
+        $boardAt = strpos($html, 'js-kanban-board');
+        $this->assertNotFalse($snapshotAt);
+        $this->assertNotFalse($boardAt);
+        $this->assertLessThan($boardAt, $snapshotAt);
+
+        Livewire::actingAs($admin)->test('board-content', [
+            'boardId' => $board->id,
+            'view' => 'kanban',
+        ])
+            ->call('openItem', $item->id)
+            ->assertSet('selectedItemId', $item->id)
+            ->assertSee('Close panel', false)
+            ->call('closePanel')
+            ->assertSet('selectedItemId', null)
+            ->assertDontSee('Close panel', false);
     }
 }
