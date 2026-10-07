@@ -8,6 +8,7 @@ use App\Http\Controllers\ItemController;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\WikiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -62,4 +63,12 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sheets/{sheet}/analytics', [AnalyticsController::class, 'sheet'])->name('sheets.analytics');
     Route::get('/sheets/{sheet}', [SheetController::class, 'show'])->name('sheets.show');
     Route::delete('/sheets/{sheet}', [SheetController::class, 'destroy'])->name('sheets.destroy');
+
+    Route::get('/wiki', [WikiController::class, 'index'])->name('wiki.index');
+    Route::get('/wiki/new', [WikiController::class, 'create'])->name('wiki.create');
+    Route::post('/wiki', [WikiController::class, 'store'])->name('wiki.store');
+    Route::get('/wiki/{wikiPage}/edit', [WikiController::class, 'edit'])->name('wiki.edit');
+    Route::put('/wiki/{wikiPage}', [WikiController::class, 'update'])->name('wiki.update');
+    Route::delete('/wiki/{wikiPage}', [WikiController::class, 'destroy'])->name('wiki.destroy');
+    Route::get('/wiki/{wikiPage}', [WikiController::class, 'show'])->name('wiki.show');
 });

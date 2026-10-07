@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Board;
 use App\Models\Sheet;
+use App\Models\WikiPage;
 use App\Services\NavList;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,8 @@ class AppServiceProvider extends ServiceProvider
         Board::deleted(fn () => self::bustNavCache());
         Sheet::saved(fn () => self::bustNavCache());
         Sheet::deleted(fn () => self::bustNavCache());
+        WikiPage::saved(fn () => self::bustNavCache());
+        WikiPage::deleted(fn () => self::bustNavCache());
 
         View::composer('layouts.app', function ($view) {
             if (auth()->check()) {
@@ -70,6 +73,15 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('hiddenSheetCount', $sheetNav['hidden_count']);
                 $sheet = request()->route('sheet');
                 $view->with('currentSheetId', $sheet ? $sheet->id : null);
+
+                $wikiNav = Cache::remember(
+                    "pmt.nav.wiki.v1.{$version}",
+                    3600,
+                    fn () => WikiPage::query()->orderByDesc('updated_at')->limit(20)->get(['id', 'title', 'slug'])
+                );
+                $view->with('sidebarWiki', $wikiNav);
+                $wikiPage = request()->route('wikiPage');
+                $view->with('currentWikiSlug', $wikiPage instanceof WikiPage ? $wikiPage->slug : null);
             } else {
                 $view->with('sidebarBoards', collect());
                 $view->with('hiddenBoardCount', 0);
@@ -77,6 +89,8 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('sidebarSheets', collect());
                 $view->with('hiddenSheetCount', 0);
                 $view->with('currentSheetId', null);
+                $view->with('sidebarWiki', collect());
+                $view->with('currentWikiSlug', null);
             }
         });
     }

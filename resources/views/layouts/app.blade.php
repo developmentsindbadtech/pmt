@@ -86,6 +86,12 @@
                                 <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M12 4v16M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>
                                 <span x-show="expanded" class="truncate text-sm font-medium">Sheets</span>
                             </a>
+                            <a href="{{ route('wiki.index') }}"
+                               class="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors {{ request()->routeIs('wiki.*') ? 'bg-white/15 font-medium text-white' : 'text-gray-300 hover:bg-white/10 hover:text-white' }}"
+                               :class="!expanded && 'justify-center'" title="Wiki">
+                                <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                                <span x-show="expanded" class="truncate text-sm font-medium">Wiki</span>
+                            </a>
                             @if(auth()->user()->is_admin)
                             <a href="{{ route('user-management.index') }}"
                                class="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors {{ request()->routeIs('user-management.*') ? 'bg-white/15 font-medium text-white' : 'text-gray-300 hover:bg-white/10 hover:text-white' }}"
@@ -153,6 +159,13 @@
                                     </div>
                                 </template>
                                 <p x-show="(results?.sheets ?? []).length === 0" class="px-3 py-1 text-xs text-gray-500">No sheets.</p>
+                                <p class="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Wiki</p>
+                                <template x-for="item in results?.wiki ?? []" :key="'w'+item.id">
+                                    <div class="mx-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-700/70">
+                                        <a :href="`/wiki/${item.slug}`" class="min-w-0 flex-1 truncate text-gray-200 hover:text-white" x-text="item.name"></a>
+                                    </div>
+                                </template>
+                                <p x-show="(results?.wiki ?? []).length === 0" class="px-3 py-1 text-xs text-gray-500">No pages.</p>
                             </div>
                             <div x-show="results === null">
                             {{-- Boards group --}}
@@ -224,6 +237,24 @@
                             @empty
                                 <p class="px-3 py-1 text-xs text-gray-500">{{ ($hiddenSheetCount ?? 0) > 0 ? 'All sheets are hidden. Search to bring one back.' : 'No sheets yet.' }}</p>
                             @endforelse
+
+                            {{-- Wiki group --}}
+                            <div class="mb-2 mt-6 flex items-center justify-between px-3">
+                                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Wiki</p>
+                                <a href="{{ route('wiki.create') }}" class="rounded p-0.5 text-gray-500 hover:bg-gray-700 hover:text-white" title="New page">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m7-7H5"/></svg>
+                                </a>
+                            </div>
+                            @forelse ($sidebarWiki ?? [] as $wikiPage)
+                                <div class="mx-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors {{ (isset($currentWikiSlug) && $currentWikiSlug === $wikiPage->slug) ? 'bg-white/15 font-medium text-white' : 'text-gray-300 hover:bg-white/10 hover:text-white' }}">
+                                    <a href="{{ route('wiki.show', $wikiPage) }}" title="{{ $wikiPage->title }}" class="flex min-w-0 flex-1 items-center gap-2.5">
+                                        <svg class="h-4 w-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h6m-6 8h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                        <span class="truncate">{{ $wikiPage->title }}</span>
+                                    </a>
+                                </div>
+                            @empty
+                                <p class="px-3 py-1 text-xs text-gray-500">No pages yet.</p>
+                            @endforelse
                             </div>
                         </div>
                     </div>
@@ -277,10 +308,10 @@
                                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                             });
                             if (this.q.trim() === term) {
-                                this.results = response.ok ? await response.json() : { boards: [], sheets: [] };
+                                this.results = response.ok ? await response.json() : { boards: [], sheets: [], wiki: [] };
                             }
                         } catch (e) {
-                            this.results = { boards: [], sheets: [] };
+                            this.results = { boards: [], sheets: [], wiki: [] };
                         } finally {
                             this.searching = false;
                         }

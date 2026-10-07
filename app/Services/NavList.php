@@ -6,6 +6,7 @@ use App\Models\Board;
 use App\Models\Sheet;
 use App\Models\User;
 use App\Models\UserNavPreference;
+use App\Models\WikiPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -35,13 +36,13 @@ class NavList
     }
 
     /**
-     * @return array{boards: list<array<string, mixed>>, sheets: list<array<string, mixed>>}
+     * @return array{boards: list<array<string, mixed>>, sheets: list<array<string, mixed>>, wiki: list<array<string, mixed>>}
      */
     public static function search(User $user, string $term): array
     {
         $term = trim($term);
         if ($term === '') {
-            return ['boards' => [], 'sheets' => []];
+            return ['boards' => [], 'sheets' => [], 'wiki' => []];
         }
 
         $like = '%'.self::escapeLike(mb_strtolower($term)).'%';
@@ -62,6 +63,17 @@ class NavList
                 $user,
                 'sheet'
             ),
+            'wiki' => WikiPage::query()
+                ->whereRaw("LOWER(title) LIKE ? ESCAPE '\\'", [$like])
+                ->orderBy('title')
+                ->limit(8)
+                ->get(['id', 'title', 'slug'])
+                ->map(fn (WikiPage $page) => [
+                    'id' => $page->id,
+                    'name' => $page->title,
+                    'slug' => $page->slug,
+                ])
+                ->all(),
         ];
     }
 

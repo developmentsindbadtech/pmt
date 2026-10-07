@@ -200,3 +200,64 @@ select.sheet-chip option {
 .item-detail-panel .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: rgb(107 114 128);
 }
+
+/* Wiki pages: readable markdown without a typography plugin */
+.wiki-prose {
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    color: #334155;
+}
+.wiki-prose > :first-child {
+    margin-top: 0;
+}
+.wiki-prose h1,
+.wiki-prose h2,
+.wiki-prose h3 {
+    color: #0f172a;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 1.5em 0 0.5em;
+}
+.wiki-prose h1 { font-size: 1.25rem; }
+.wiki-prose h2 { font-size: 1.1rem; }
+.wiki-prose h3 { font-size: 1rem; }
+.wiki-prose p,
+.wiki-prose ul,
+.wiki-prose ol {
+    margin: 0.75em 0;
+}
+.wiki-prose ul,
+.wiki-prose ol {
+    padding-left: 1.25rem;
+}
+.wiki-prose ul { list-style: disc; }
+.wiki-prose ol { list-style: decimal; }
+.wiki-prose a {
+    color: #1d4ed8;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.wiki-prose code {
+    font-size: 0.85em;
+    background: #f1f5f9;
+    border-radius: 0.25rem;
+    padding: 0.1em 0.35em;
+}
+.wiki-prose pre {
+    overflow-x: auto;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.8125rem;
+}
+.wiki-prose pre code {
+    background: transparent;
+    padding: 0;
+}
+.wiki-prose blockquote {
+    border-left: 3px solid #cbd5e1;
+    color: #64748b;
+    margin: 0.75em 0;
+    padding-left: 0.85rem;
+}

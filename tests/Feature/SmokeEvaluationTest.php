@@ -47,6 +47,7 @@ class SmokeEvaluationTest extends TestCase
         $this->get('/')->assertRedirect(route('login'));
         $this->get(route('boards.index'))->assertRedirect(route('login'));
         $this->get(route('sheets.index'))->assertRedirect(route('login'));
+        $this->get(route('wiki.index'))->assertRedirect(route('login'));
     }
 
     public function test_regular_user_only_sees_assigned_boards(): void
