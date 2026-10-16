@@ -225,6 +225,23 @@ class IntegrationTicketsTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
+    public function test_ensure_mode_creates_token_once_without_printing(): void
+    {
+        $this->artisan('pmt:integration-token', ['--ensure' => true])
+            ->expectsOutputToContain('Wrote new integration token')
+            ->doesntExpectOutputToContain('Bearer token (store securely')
+            ->assertSuccessful();
+
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists('pmt-integration-token'));
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+
+        $this->artisan('pmt:integration-token', ['--ensure' => true])
+            ->expectsOutputToContain('Integration token already exists; skipping')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
     public function test_sanctum_acting_as_without_bearer_still_blocked(): void
     {
         $user = $this->integrationUser();

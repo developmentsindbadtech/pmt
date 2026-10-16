@@ -34,6 +34,8 @@ composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 npm ci
 npm run build
 php artisan migrate --force --no-interaction
+# Create integration user + Sanctum token once (skips if token already exists; does not print secret).
+php artisan pmt:integration-token --ensure --no-interaction
 php artisan optimize:clear || true
 sudo -n chown -R www-data:www-data storage bootstrap/cache
 sudo -n chmod -R ug+rwX storage bootstrap/cache
@@ -50,11 +52,10 @@ REMOTE
             when { branch 'main' }
             steps {
                 sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
-                    // App lives at /var/www/pmt-prod (see pmt.sh deploy). Override with PMT_APP_DIR if needed.
-                    // Note: pmt.sh already runs migrate; this stage is a safety net after deploy.
+                    // Safety net after deploy (migrate + ensure integration token for transcript analyzer).
                     sh '''
                         ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
-                            'cd /var/www/pmt-prod && sudo -n -u www-data php artisan migrate --force --no-interaction'
+                            'cd /var/www/pmt-prod && sudo -n -u www-data php artisan migrate --force --no-interaction && sudo -n -u www-data php artisan pmt:integration-token --ensure --no-interaction'
                     '''
                 }
             }
