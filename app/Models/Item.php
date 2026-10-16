@@ -43,6 +43,7 @@ class Item extends Model
         'assignee_id',
         'due_at',
         'dev_tag',
+        'external_key',
         'archived_at',
     ];
 

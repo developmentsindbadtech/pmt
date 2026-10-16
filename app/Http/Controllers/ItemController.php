@@ -5,9 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Board;
 use App\Models\Item;
 use App\Models\ItemActivity;
-use App\Models\ItemColumnValue;
 use App\Models\ItemComment;
 use App\Models\User;
+use App\Services\BoardItemCreator;
+use App\Services\ItemAssignmentNotifier;
 use App\Services\MentionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,9 +19,8 @@ use Illuminate\Validation\Rule;
 
 class ItemController extends Controller
 {
-    public function store(Request $request, Board $board): RedirectResponse
+    public function store(Request $request, Board $board, BoardItemCreator $itemCreator): RedirectResponse
     {
-
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'group_id' => 'nullable|exists:groups,id',
@@ -31,60 +31,15 @@ class ItemController extends Controller
             'assignee_id' => 'nullable|exists:users,id',
         ]);
 
-        $maxPosition = $board->items()->when(isset($validated['group_id']), function ($q) use ($validated) {
-            $q->where('group_id', $validated['group_id']);
-        })->max('position') ?? -1;
-
-        $nextNumber = ((int) $board->items()->max('number')) + 1;
-
-        $item = Item::create([
-            'board_id' => $board->id,
-            'number' => $nextNumber,
+        $itemCreator->create($board, $request->user(), [
             'name' => $validated['name'],
             'item_type' => $validated['item_type'] ?? 'task',
             'priority' => $validated['priority'] ?? 'medium',
-            'severity' => ($validated['item_type'] ?? 'task') === 'bug' ? ($validated['severity'] ?? 'major') : null,
+            'severity' => $validated['severity'] ?? null,
             'due_at' => $validated['due_at'] ?? null,
-            'group_id' => $validated['group_id'] ?? $board->groups()->first()?->id,
-            'position' => $maxPosition + 1,
-            'created_by' => $request->user()->id,
+            'group_id' => $validated['group_id'] ?? null,
             'assignee_id' => $validated['assignee_id'] ?? null,
         ]);
-
-        // Create activity record for item creation
-        ItemActivity::create([
-            'item_id' => $item->id,
-            'user_id' => $request->user()->id,
-            'type' => 'created',
-            'field' => null,
-            'old_value' => null,
-            'new_value' => null,
-        ]);
-
-        // Send assignment notification if assignee is set
-        if ($item->assignee_id && $item->assignee_id != $request->user()->id) {
-            $this->sendAssignmentNotification($item, $board, $request->user());
-        }
-
-        $statusColumn = $board->columns()->where('type', 'status')->first();
-        if ($statusColumn) {
-            $defaultStatus = $statusColumn->settings['options'][0] ?? 'To Do';
-            ItemColumnValue::create([
-                'item_id' => $item->id,
-                'column_id' => $statusColumn->id,
-                'value' => ['text' => $defaultStatus],
-            ]);
-        }
-
-        foreach ($board->columns()->where('type', '!=', 'status')->get() as $col) {
-            if ($col->name === 'Name') {
-                ItemColumnValue::create([
-                    'item_id' => $item->id,
-                    'column_id' => $col->id,
-                    'value' => ['text' => $item->name],
-                ]);
-            }
-        }
 
         return redirect()->route('boards.show', ['board' => $board, 'view' => request('view', $board->view_type)])
             ->with('success', 'Item added.');
@@ -261,7 +216,7 @@ class ItemController extends Controller
                 // Send assignment notification if assignee changed and is not the person assigning
                 if ($updates['assignee_id'] != null) {
                     $item->load('assignee');
-                    $this->sendAssignmentNotification($item, $board, $user);
+                    app(ItemAssignmentNotifier::class)->notify($item, $board, $user);
                 }
             }
 
@@ -649,60 +604,4 @@ class ItemController extends Controller
         }
     }
 
-    /**
-     * Send assignment notification email
-     */
-    private function sendAssignmentNotification(Item $item, Board $board, User $assignedBy): void
-    {
-        // Check if Microsoft Graph credentials are configured
-        if (! config('services.microsoft.client_id') || ! config('services.microsoft.client_secret')) {
-            return; // Microsoft Graph not configured
-        }
-
-        // Don't send email if assigning to self
-        if ($item->assignee_id === $assignedBy->id) {
-            return;
-        }
-
-        // Ensure assignee is loaded
-        if (! $item->relationLoaded('assignee')) {
-            $item->load('assignee');
-        }
-
-        if (! $item->assignee || ! $item->assignee->email) {
-            return;
-        }
-
-        $graphService = app(\App\Services\MicrosoftGraphMailService::class);
-
-        $itemType = $item->isBug() ? 'Bug' : 'Task';
-        $itemUrl = route('boards.show.item', [
-            'board' => $board->id,
-            'item' => $item->number,
-            'view' => $board->view_type,
-        ]);
-
-        $htmlBody = view('emails.assignment', [
-            'assignedBy' => $assignedBy,
-            'item' => $item,
-            'board' => $board,
-            'itemUrl' => $itemUrl,
-        ])->render();
-
-        $subject = "You were assigned to {$itemType} #{$item->number}";
-
-        try {
-            $success = $graphService->sendEmail(
-                $item->assignee->email,
-                $subject,
-                $htmlBody
-            );
-
-            if (! $success) {
-                \Log::error("Failed to send assignment notification via Microsoft Graph to: {$item->assignee->email}");
-            }
-        } catch (\Exception $e) {
-            \Log::error('Failed to send assignment notification via Microsoft Graph: '.$e->getMessage());
-        }
-    }
 }
