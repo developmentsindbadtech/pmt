@@ -22,7 +22,7 @@ pipeline {
                     // the deploy user, then git pull fails and the script still exits 0.
                     sh '''
                         set -eu
-                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 "bash -s -- $GIT_COMMIT" <<'REMOTE'
+                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.194 "bash -s -- $GIT_COMMIT" <<'REMOTE'
 set -eu
 EXPECTED="$1"
 APP=/var/www/pmt-prod
@@ -54,7 +54,7 @@ REMOTE
                 sshagent(credentials: ['7b54feb5-8d16-4f91-8408-69b772e863dd']) {
                     // Safety net after deploy (migrate + ensure integration token for transcript analyzer).
                     sh '''
-                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
+                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.194 \
                             'cd /var/www/pmt-prod && sudo -n -u www-data php artisan migrate --force --no-interaction && sudo -n -u www-data php artisan pmt:integration-token --ensure --no-interaction'
                     '''
                 }
@@ -69,7 +69,7 @@ REMOTE
                     // cannot write (Permission denied on laravel.log / stale routes).
                     // Prefer on server (once, as root): chown -R www-data:www-data storage bootstrap/cache
                     sh '''
-                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.181 \
+                        ssh -o StrictHostKeyChecking=no jenkins-deploy-key@34.1.61.194 \
                             'cd /var/www/pmt-prod && sudo -n -u www-data php artisan optimize:clear'
                     '''
                 }
