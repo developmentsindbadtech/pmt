@@ -59,6 +59,11 @@ class IntegrationAnalyticsController extends Controller
             'overdue' => $report['overdue'],
             'unassigned' => $report['unassigned'],
             'aging' => $report['aging'],
+            'statuses' => collect($report['statuses'] ?? [])->map(fn (array $row) => [
+                'name' => $row['name'],
+                'count' => $row['count'],
+                'color' => $row['color'],
+            ])->values(),
             'hiddenAging' => $report['hiddenAging'] ?? [],
         ]);
     }

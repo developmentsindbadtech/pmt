@@ -96,6 +96,7 @@ class IntegrationAnalyticsTest extends TestCase
             ->assertJsonPath('hiddenAging.0.owner', 'Mina Member')
             ->assertJsonPath('hiddenAging.0.ownerEmail', 'member@sindbad.tech')
             ->assertJsonPath('hiddenAging.0.column', 'In Progress')
+            ->assertJsonFragment(['name' => 'In Progress', 'color' => '#0ea5e9'])
             ->assertJsonMissing(['name' => 'Fresh work']);
 
         $this->getJson(
