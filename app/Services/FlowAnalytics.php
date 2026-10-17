@@ -935,4 +935,151 @@ class FlowAnalytics
 
         return $days.' days';
     }
+
+    /**
+     * Oldest open tickets for one person, five per board, across every board the viewer can open.
+     * Closed tickets are finished. Days are time in the current column, from the start until now.
+     *
+     * @return array{people: array<int, array{name: string, email: string}>, person: array{name: string, email: string}, projects: array<int, array{id: int, name: string, more: int, tickets: array<int, array{number: int, name: string, column: string, days: int, url: string}>}>, omittedProjects: int}
+     */
+    public static function assigneeAging(User $viewer, User $assignee): array
+    {
+        $boards = $viewer->isAdmin()
+            ? Board::query()->orderBy('name')->get(['id', 'name'])
+            : $viewer->boards()->orderBy('name')->get(['boards.id', 'boards.name']);
+        $boardIds = $boards->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $people = self::openAssigneeChoices($boardIds, $viewer);
+
+        if ($boardIds === []) {
+            return [
+                'people' => $people,
+                'person' => ['name' => $assignee->name, 'email' => $assignee->email],
+                'projects' => [],
+                'omittedProjects' => 0,
+            ];
+        }
+
+        $doneIds = Group::query()
+            ->whereIn('board_id', $boardIds)
+            ->get(['id', 'board_id', 'name'])
+            ->filter(fn (Group $group) => $group->isDone())
+            ->pluck('id')
+            ->all();
+
+        $items = Item::query()
+            ->whereIn('board_id', $boardIds)
+            ->where('assignee_id', $assignee->id)
+            ->whereNull('archived_at')
+            ->when($doneIds !== [], function ($query) use ($doneIds) {
+                $query->where(function ($inner) use ($doneIds): void {
+                    $inner->whereNull('group_id')->orWhereNotIn('group_id', $doneIds);
+                });
+            })
+            ->get(['id', 'board_id', 'number', 'name', 'group_id', 'created_at']);
+
+        $groups = Group::query()
+            ->whereIn('id', $items->pluck('group_id')->filter()->unique()->all() ?: [0])
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        $activities = $items->isEmpty()
+            ? collect()
+            : ItemActivity::query()
+                ->where('type', 'status_changed')
+                ->whereIn('item_id', $items->pluck('id'))
+                ->orderBy('created_at')
+                ->get(['item_id', 'new_value', 'created_at'])
+                ->groupBy('item_id');
+
+        $byBoard = [];
+        foreach ($items as $item) {
+            if (! $item instanceof Item) {
+                continue;
+            }
+            $group = $groups->get($item->group_id);
+            $column = $group instanceof Group ? $group->name : 'No status';
+            $days = self::daysBetween(
+                self::enteredColumnAt($item, $activities->get($item->id, collect()), $column === 'No status' ? null : $column),
+                now(),
+            );
+            $byBoard[(int) $item->board_id][] = [
+                'number' => (int) $item->number,
+                'name' => $item->name,
+                'column' => $column,
+                'days' => $days,
+                'url' => route('boards.show.item', ['board' => $item->board_id, 'item' => $item->number]),
+            ];
+        }
+
+        $names = $boards->keyBy('id');
+        $projects = [];
+        foreach ($byBoard as $boardId => $tickets) {
+            usort($tickets, function (array $left, array $right): int {
+                return $right['days'] <=> $left['days'] ?: $left['number'] <=> $right['number'];
+            });
+            $board = $names->get($boardId);
+            $projects[] = [
+                'id' => (int) $boardId,
+                'name' => $board instanceof Board ? $board->name : 'Project',
+                'more' => max(0, count($tickets) - 5),
+                'tickets' => array_slice($tickets, 0, 5),
+            ];
+        }
+
+        usort($projects, function (array $left, array $right): int {
+            return ($right['tickets'][0]['days'] ?? 0) <=> ($left['tickets'][0]['days'] ?? 0)
+                ?: strcmp($left['name'], $right['name']);
+        });
+
+        return [
+            'people' => $people,
+            'person' => ['name' => $assignee->name, 'email' => $assignee->email],
+            'projects' => array_slice($projects, 0, 30),
+            'omittedProjects' => max(0, count($projects) - 30),
+        ];
+    }
+
+    /**
+     * People who still have an open ticket on a board the viewer can open.
+     *
+     * @param  array<int, int>  $boardIds
+     * @return array<int, array{name: string, email: string}>
+     */
+    private static function openAssigneeChoices(array $boardIds, User $viewer): array
+    {
+        $ids = [];
+        if ($boardIds !== []) {
+            $doneIds = Group::query()
+                ->whereIn('board_id', $boardIds)
+                ->get(['id', 'name'])
+                ->filter(fn (Group $group) => $group->isDone())
+                ->pluck('id')
+                ->all();
+            $ids = Item::query()
+                ->whereIn('board_id', $boardIds)
+                ->whereNull('archived_at')
+                ->whereNotNull('assignee_id')
+                ->when($doneIds !== [], function ($query) use ($doneIds) {
+                    $query->where(function ($inner) use ($doneIds): void {
+                        $inner->whereNull('group_id')->orWhereNotIn('group_id', $doneIds);
+                    });
+                })
+                ->distinct()
+                ->pluck('assignee_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        if (! in_array($viewer->id, $ids, true)) {
+            $ids[] = $viewer->id;
+        }
+
+        return User::query()
+            ->whereIn('id', $ids === [] ? [0] : $ids)
+            ->orderBy('name')
+            ->get(['name', 'email'])
+            ->map(fn (User $user) => ['name' => $user->name, 'email' => $user->email])
+            ->values()
+            ->all();
+    }
 }

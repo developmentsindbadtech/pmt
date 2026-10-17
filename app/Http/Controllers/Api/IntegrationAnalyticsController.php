@@ -68,6 +68,27 @@ class IntegrationAnalyticsController extends Controller
         ]);
     }
 
+    public function aging(Request $request): JsonResponse
+    {
+        $viewer = $this->viewer($request);
+        $raw = $request->query('assignee');
+        $assigneeEmail = is_string($raw) && trim($raw) !== '' ? trim($raw) : $viewer->email;
+        if (! filter_var($assigneeEmail, FILTER_VALIDATE_EMAIL)) {
+            return response()->json([
+                'message' => 'Choose a person from the list.',
+            ], 422);
+        }
+
+        $assignee = User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower($assigneeEmail)])->first();
+        if (! $assignee instanceof User) {
+            return response()->json([
+                'message' => 'No PMT user matches that person.',
+            ], 404);
+        }
+
+        return response()->json(FlowAnalytics::assigneeAging($viewer, $assignee));
+    }
+
     private function viewer(Request $request): User
     {
         $email = mb_strtolower(trim((string) $request->query('email', '')));
