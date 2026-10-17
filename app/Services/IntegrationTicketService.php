@@ -12,6 +12,7 @@ class IntegrationTicketService
 {
     public function __construct(
         private BoardItemCreator $itemCreator,
+        private ItemAssignmentNotifier $assignmentNotifier,
     ) {}
 
     /**
@@ -94,7 +95,10 @@ class IntegrationTicketService
             if (! empty($row['assigneeEmail'])) {
                 $assignee = $this->findUserByEmail((string) $row['assigneeEmail']);
                 $assigneeMatched = $assignee !== null;
-                if (! $assigneeMatched) {
+                if ($assignee && $existing->assignee_id === null) {
+                    $existing->forceFill(['assignee_id' => $assignee->id])->save();
+                    $this->assignmentNotifier->notify($existing, $board, $creator);
+                } elseif (! $assignee) {
                     $warning = 'No user found for '.$row['assigneeEmail'].' (existing ticket left unchanged).';
                 }
             }

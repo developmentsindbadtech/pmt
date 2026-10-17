@@ -202,6 +202,48 @@ class IntegrationTicketsTest extends TestCase
         $this->assertFalse($second->json('items.0.created'));
     }
 
+    public function test_existing_unassigned_ticket_is_assigned_when_email_is_sent_later(): void
+    {
+        $integration = $this->integrationUser();
+        $this->boardWithGroup('Ops Board');
+        $jeremy = User::factory()->create([
+            'name' => 'Jeremy Daniel E. Estrada',
+            'email' => 'jeremy.estrada@sindbad.tech',
+        ]);
+
+        $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'items' => [[
+                'externalKey' => 'jeremy-key',
+                'name' => 'Follow up with Jeremy',
+                'itemType' => 'task',
+                'priority' => 'medium',
+            ]],
+        ], $this->tokenHeaders($integration))->assertOk();
+
+        $item = Item::query()->where('external_key', 'jeremy-key')->first();
+        $this->assertNotNull($item);
+        $this->assertNull($item->assignee_id);
+
+        $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'items' => [[
+                'externalKey' => 'jeremy-key',
+                'name' => 'Follow up with Jeremy',
+                'itemType' => 'task',
+                'priority' => 'medium',
+                'assigneeEmail' => 'jeremy.estrada@sindbad.tech',
+            ]],
+        ], $this->tokenHeaders($integration))
+            ->assertOk()
+            ->assertJsonPath('items.0.created', false)
+            ->assertJsonPath('items.0.assigneeMatched', true);
+
+        $item->refresh();
+        $this->assertSame($jeremy->id, $item->assignee_id);
+        $this->assertSame(1, Item::query()->where('external_key', 'jeremy-key')->count());
+    }
+
     public function test_unknown_assignee_creates_unassigned_ticket(): void
     {
         $integration = $this->integrationUser();
