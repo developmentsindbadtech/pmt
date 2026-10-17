@@ -117,11 +117,66 @@ class IntegrationTicketsTest extends TestCase
         $this->assertSame('high', $item->priority);
         $this->assertStringContainsString('full description', (string) $item->description);
         $this->assertStringContainsString('Meeting: Thu, 15 Oct 2026 KSA', (string) $item->description);
-        $this->assertStringContainsString('Related to: OO4-12', (string) $item->description);
+        $this->assertStringContainsString('Related to: None', (string) $item->description);
+        $this->assertStringContainsString('Mentioned with: OO4-12', (string) $item->description);
+        $this->assertNull($item->parent_id);
+        $response->assertJsonPath('items.0.relatedLabel', 'None');
         $this->assertSame(
             url('/boards/'.$board->id.'/ticket/'.$item->number),
             $response->json('items.0.url')
         );
+    }
+
+    public function test_exact_ticket_name_becomes_parent_and_loose_text_stays_none(): void
+    {
+        $integration = $this->integrationUser();
+        $board = $this->boardWithGroup('Ops Board');
+        Column::create([
+            'board_id' => $board->id,
+            'name' => 'Related To',
+            'type' => 'text',
+            'position' => 1,
+        ]);
+
+        $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'items' => [
+                [
+                    'externalKey' => 'parent-key',
+                    'name' => 'Expand DPM Connection Table',
+                    'itemType' => 'task',
+                    'priority' => 'medium',
+                    'relatedTo' => 'None',
+                ],
+                [
+                    'externalKey' => 'child-key',
+                    'name' => 'Follow up the table work',
+                    'itemType' => 'task',
+                    'priority' => 'low',
+                    'relatedTo' => 'Expand DPM Connection Table',
+                ],
+                [
+                    'externalKey' => 'loose-key',
+                    'name' => 'Something else',
+                    'itemType' => 'task',
+                    'priority' => 'low',
+                    'relatedTo' => 'a vague topic',
+                ],
+            ],
+        ], $this->tokenHeaders($integration))->assertOk()
+            ->assertJsonPath('items.0.relatedLabel', 'None')
+            ->assertJsonPath('items.1.relatedLabel', 'PMT #1 Expand DPM Connection Table')
+            ->assertJsonPath('items.2.relatedLabel', 'None');
+
+        $parent = Item::query()->where('external_key', 'parent-key')->first();
+        $child = Item::query()->where('external_key', 'child-key')->first();
+        $loose = Item::query()->where('external_key', 'loose-key')->first();
+        $this->assertNotNull($parent);
+        $this->assertNotNull($child);
+        $this->assertNotNull($loose);
+        $this->assertSame($parent->id, $child->parent_id);
+        $this->assertNull($loose->parent_id);
+        $this->assertStringNotContainsString('a vague topic', (string) $loose->description);
     }
 
     public function test_idempotent_on_external_key(): void

@@ -68,6 +68,8 @@ class IntegrationTicketService
             $results[] = $this->upsertOne($board, $creator, $meetingDate, $row);
         }
 
+        $this->linkBatchRelations($board, $items, $results);
+
         return [
             'board' => [
                 'id' => $board->id,
@@ -114,19 +116,9 @@ class IntegrationTicketService
         }
 
         $description = trim((string) ($row['description'] ?? ''));
-        $relatedTo = isset($row['relatedTo']) ? trim((string) $row['relatedTo']) : '';
-        $relatedColumn = $this->findRelatedColumn($board);
 
-        $footerLines = [];
         if ($meetingDate !== null && trim($meetingDate) !== '') {
-            $footerLines[] = 'Meeting: '.trim($meetingDate);
-        }
-        if ($relatedTo !== '' && $relatedColumn === null) {
-            $footerLines[] = 'Related to: '.$relatedTo;
-        }
-
-        if ($footerLines !== []) {
-            $footer = implode("\n", $footerLines);
+            $footer = 'Meeting: '.trim($meetingDate);
             $description = $description === ''
                 ? $footer
                 : rtrim($description)."\n\n---\n".$footer;
@@ -148,15 +140,91 @@ class IntegrationTicketService
             'external_key' => $externalKey,
         ]);
 
-        if ($relatedTo !== '' && $relatedColumn !== null) {
-            ItemColumnValue::create([
-                'item_id' => $item->id,
-                'column_id' => $relatedColumn->id,
-                'value' => ['text' => $relatedTo],
-            ]);
+        return $this->itemPayload($item, $board, $externalKey, $assigneeMatched, $warning, created: true, relatedLabel: null);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<int, array<string, mixed>>  $results
+     */
+    private function linkBatchRelations(Board $board, array $rows, array &$results): void
+    {
+        foreach ($rows as $index => $row) {
+            if (($results[$index]['created'] ?? false) !== true) {
+                continue;
+            }
+
+            $item = Item::query()->find($results[$index]['id'] ?? null);
+            if (! $item instanceof Item) {
+                continue;
+            }
+
+            $relatedTo = trim((string) ($row['relatedTo'] ?? ''));
+            $match = $this->findRelatedItem($board, $item, $relatedTo);
+            $label = 'None';
+            if ($match instanceof Item) {
+                $item->forceFill(['parent_id' => $match->id])->save();
+                $label = 'PMT #'.$match->number.' '.$match->name;
+            }
+
+            $this->storeRelatedLabel($board, $item, $label, $relatedTo);
+            $results[$index]['relatedLabel'] = $label;
+        }
+    }
+
+    private function isBlankRelation(string $relatedTo): bool
+    {
+        return $relatedTo === '' || preg_match('/^(none|n\/a|na|tbd|-)$/i', $relatedTo) === 1;
+    }
+
+    private function findRelatedItem(Board $board, Item $item, string $relatedTo): ?Item
+    {
+        if ($this->isBlankRelation($relatedTo)) {
+            return null;
         }
 
-        return $this->itemPayload($item, $board, $externalKey, $assigneeMatched, $warning, created: true);
+        $matches = Item::query()
+            ->where('board_id', $board->id)
+            ->where('id', '!=', $item->id)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($relatedTo)])
+            ->get();
+
+        if ($matches->count() !== 1) {
+            return null;
+        }
+
+        $match = $matches->first();
+        if (! $match instanceof Item || $match->parent_id === $item->id) {
+            return null;
+        }
+
+        return $match;
+    }
+
+    private function storeRelatedLabel(Board $board, Item $item, string $label, string $original): void
+    {
+        $column = $this->findRelatedColumn($board);
+        if ($column instanceof Column) {
+            ItemColumnValue::query()->updateOrCreate(
+                [
+                    'item_id' => $item->id,
+                    'column_id' => $column->id,
+                ],
+                ['value' => ['text' => $label]],
+            );
+
+            return;
+        }
+
+        $lines = ['Related to: '.$label];
+        if ($label === 'None' && ! $this->isBlankRelation($original)) {
+            $lines[] = 'Mentioned with: '.$original;
+        }
+        $footer = implode("\n", $lines);
+        $description = trim((string) $item->description);
+        $item->forceFill([
+            'description' => $description === '' ? $footer : $description."\n".$footer,
+        ])->save();
     }
 
     private function findUserByEmail(string $email): ?User
@@ -186,6 +254,7 @@ class IntegrationTicketService
         bool $assigneeMatched,
         ?string $warning,
         bool $created,
+        ?string $relatedLabel = null,
     ): array {
         $payload = [
             'externalKey' => $externalKey,
@@ -198,6 +267,9 @@ class IntegrationTicketService
 
         if ($warning !== null) {
             $payload['warning'] = $warning;
+        }
+        if ($relatedLabel !== null) {
+            $payload['relatedLabel'] = $relatedLabel;
         }
 
         return $payload;
