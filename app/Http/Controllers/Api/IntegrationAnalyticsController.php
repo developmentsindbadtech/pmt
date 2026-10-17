@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\FlowAnalytics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class IntegrationAnalyticsController extends Controller
 {
@@ -36,7 +37,11 @@ class IntegrationAnalyticsController extends Controller
             ], 403);
         }
 
-        $report = FlowAnalytics::forBoard($board);
+        $range = $request->query('range') === 'month' ? 'month' : 'week';
+        $from = $range === 'month'
+            ? Carbon::now()->subDays(29)->startOfDay()
+            : Carbon::now()->subDays(6)->startOfDay();
+        $report = FlowAnalytics::forBoard($board, $from, Carbon::now());
 
         return response()->json([
             'board' => [
@@ -44,6 +49,9 @@ class IntegrationAnalyticsController extends Controller
                 'name' => $report['title'],
                 'url' => route('boards.analytics', $board),
             ],
+            'range' => $range,
+            'from' => $report['from'],
+            'to' => $report['to'],
             'fromLabel' => $report['fromLabel'],
             'toLabel' => $report['toLabel'],
             'open' => $report['open'],

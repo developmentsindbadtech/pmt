@@ -712,7 +712,7 @@ class FlowAnalytics
      * @param  Collection<int, Group>  $groupById
      * @param  Collection<int|string, string>  $names
      * @param  array<int, array{title: string, meta: string, url: string}>  $attention
-     * @return array<int, array{number: int, name: string, column: string, days: int, owner: string, due: ?string, url: string}>
+     * @return array<int, array{number: int, name: string, column: string, days: int, owner: string, ownerEmail: ?string, due: ?string, url: string}>
      */
     private static function hiddenAgingTickets(
         Board $board,
@@ -726,6 +726,10 @@ class FlowAnalytics
         foreach ($attention as $row) {
             $shown[$row['title']] = true;
         }
+
+        $emails = User::query()
+            ->whereIn('id', $open->pluck('assignee_id')->filter()->unique()->all() ?: [0])
+            ->pluck('email', 'id');
 
         $rows = [];
         foreach ($open as $item) {
@@ -747,6 +751,7 @@ class FlowAnalytics
                 'column' => $group instanceof Group ? $group->name : 'No status',
                 'days' => $days,
                 'owner' => $item->assignee_id ? ($names[$item->assignee_id] ?? 'Someone') : 'Unassigned',
+                'ownerEmail' => $item->assignee_id ? ($emails[$item->assignee_id] ?? null) : null,
                 'due' => $item->due_at ? $item->due_at->format('M j') : null,
                 'url' => route('boards.show.item', ['board' => $board->id, 'item' => $item->number]),
             ];

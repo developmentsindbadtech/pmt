@@ -92,9 +92,16 @@ class IntegrationAnalyticsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('board.name', 'Ops Board')
             ->assertJsonPath('hiddenAging.0.number', 9)
+            ->assertJsonPath('range', 'week')
             ->assertJsonPath('hiddenAging.0.owner', 'Mina Member')
+            ->assertJsonPath('hiddenAging.0.ownerEmail', 'member@sindbad.tech')
             ->assertJsonPath('hiddenAging.0.column', 'In Progress')
             ->assertJsonMissing(['name' => 'Fresh work']);
+
+        $this->getJson(
+            '/api/integrations/boards/'.$board->id.'/analytics?email=member@sindbad.tech&range=month',
+            $this->tokenHeaders($integration),
+        )->assertOk()->assertJsonPath('range', 'month');
     }
 
     public function test_outsider_cannot_read_another_boards_analytics(): void
