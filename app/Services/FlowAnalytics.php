@@ -186,6 +186,7 @@ class FlowAnalytics
             'snapshotEmpty' => 'No work right now.',
             'closedHint' => 'Finished in this range',
             'aging' => self::aging($open, $columnEntered),
+            'hiddenAging' => self::hiddenAgingTickets($board, $open, $groupById, $names, $columnEntered, $attention),
         ]);
     }
 
@@ -701,6 +702,61 @@ class FlowAnalytics
             })->count(),
             'closed' => collect($closes)->filter(fn (Carbon $at) => $at->between($from, $to))->count(),
         ];
+    }
+
+    /**
+     * Open tickets that have sat in the current column for 8 days or more and are not already
+     * named in the eight-item attention list.
+     *
+     * @param  Collection<int, Item>  $open
+     * @param  Collection<int, Group>  $groupById
+     * @param  Collection<int|string, string>  $names
+     * @param  array<int, array{title: string, meta: string, url: string}>  $attention
+     * @return array<int, array{number: int, name: string, column: string, days: int, owner: string, due: ?string, url: string}>
+     */
+    private static function hiddenAgingTickets(
+        Board $board,
+        Collection $open,
+        Collection $groupById,
+        Collection $names,
+        callable $columnEntered,
+        array $attention,
+    ): array {
+        $shown = [];
+        foreach ($attention as $row) {
+            $shown[$row['title']] = true;
+        }
+
+        $rows = [];
+        foreach ($open as $item) {
+            if (! $item instanceof Item) {
+                continue;
+            }
+            $days = self::daysBetween($columnEntered($item), now());
+            if ($days < 8) {
+                continue;
+            }
+            $title = '#'.$item->number.' '.$item->name;
+            if (isset($shown[$title])) {
+                continue;
+            }
+            $group = $groupById->get($item->group_id);
+            $rows[] = [
+                'number' => (int) $item->number,
+                'name' => $item->name,
+                'column' => $group instanceof Group ? $group->name : 'No status',
+                'days' => $days,
+                'owner' => $item->assignee_id ? ($names[$item->assignee_id] ?? 'Someone') : 'Unassigned',
+                'due' => $item->due_at ? $item->due_at->format('M j') : null,
+                'url' => route('boards.show.item', ['board' => $board->id, 'item' => $item->number]),
+            ];
+        }
+
+        usort($rows, function (array $left, array $right): int {
+            return $right['days'] <=> $left['days'] ?: $left['number'] <=> $right['number'];
+        });
+
+        return $rows;
     }
 
     /**
