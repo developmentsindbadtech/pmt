@@ -27,6 +27,7 @@ class BoardItemCreator
      *     due_at?: string|null,
      *     assignee_id?: int|null,
      *     description?: string|null,
+     *     repro_steps?: string|null,
      *     dev_tag?: string|null,
      *     external_key?: string|null,
      *     group_id?: int|null,
@@ -58,6 +59,7 @@ class BoardItemCreator
             'created_by' => $creator->id,
             'assignee_id' => $attributes['assignee_id'] ?? null,
             'description' => $attributes['description'] ?? null,
+            'repro_steps' => $itemType === 'bug' ? ($attributes['repro_steps'] ?? null) : null,
             'dev_tag' => $attributes['dev_tag'] ?? null,
             'external_key' => $attributes['external_key'] ?? null,
         ]);

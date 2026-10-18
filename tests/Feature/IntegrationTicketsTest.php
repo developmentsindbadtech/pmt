@@ -117,6 +117,7 @@ class IntegrationTicketsTest extends TestCase
         $this->assertSame('high', $item->priority);
         $this->assertStringContainsString('full description', (string) $item->description);
         $this->assertStringContainsString('Meeting: Thu, 15 Oct 2026 KSA', (string) $item->description);
+        $this->assertNull($item->repro_steps);
         $this->assertStringContainsString('Related to: None', (string) $item->description);
         $this->assertStringContainsString('Mentioned with: OO4-12', (string) $item->description);
         $this->assertNull($item->parent_id);
@@ -200,6 +201,123 @@ class IntegrationTicketsTest extends TestCase
         $this->assertSame(1, Item::query()->where('external_key', 'same-key')->count());
         $this->assertSame($first->json('items.0.id'), $second->json('items.0.id'));
         $this->assertFalse($second->json('items.0.created'));
+    }
+
+    public function test_bug_description_is_stored_as_repro_steps(): void
+    {
+        $integration = $this->integrationUser();
+        $this->boardWithGroup('Ops Board');
+
+        $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'meetingDate' => 'Sun, 18 Oct 2026 KSA',
+            'items' => [[
+                'externalKey' => 'bug-key',
+                'name' => 'Resolve formula errors',
+                'itemType' => 'bug',
+                'priority' => 'high',
+                'description' => "Investigate the CMD formulas.\n1. Reconcile portfolio P&L.",
+                'devTag' => '#backend',
+            ]],
+        ], $this->tokenHeaders($integration))->assertOk()->assertJsonPath('items.0.created', true);
+
+        $item = Item::query()->where('external_key', 'bug-key')->first();
+        $this->assertNotNull($item);
+        $this->assertSame('bug', $item->item_type);
+        $this->assertSame('backend', $item->dev_tag);
+        $this->assertStringContainsString('Investigate the CMD formulas.', (string) $item->repro_steps);
+        $this->assertStringContainsString('1. Reconcile portfolio P&L.', (string) $item->repro_steps);
+        $this->assertStringContainsString('Meeting: Sun, 18 Oct 2026 KSA', (string) $item->repro_steps);
+    }
+
+    public function test_repeat_create_fills_blank_details_without_overwriting(): void
+    {
+        $integration = $this->integrationUser();
+        $this->boardWithGroup('Ops Board');
+
+        $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'items' => [
+                [
+                    'externalKey' => 'bug-blank',
+                    'name' => 'Original bug title',
+                    'itemType' => 'bug',
+                    'priority' => 'low',
+                ],
+                [
+                    'externalKey' => 'task-blank',
+                    'name' => 'Original task title',
+                    'itemType' => 'task',
+                    'priority' => 'low',
+                ],
+                [
+                    'externalKey' => 'bug-kept',
+                    'name' => 'Bug with repro',
+                    'itemType' => 'bug',
+                    'priority' => 'high',
+                    'description' => 'Keep these repro steps.',
+                    'devTag' => '#frontend',
+                ],
+            ],
+        ], $this->tokenHeaders($integration))->assertOk();
+
+        $kept = Item::query()->where('external_key', 'bug-kept')->first();
+        $this->assertNotNull($kept);
+        $kept->forceFill(['dev_tag' => '#backend'])->save();
+
+        $response = $this->postJson('/api/integrations/tickets', [
+            'boardName' => 'Ops Board',
+            'meetingDate' => 'Sun, 18 Oct 2026 KSA',
+            'items' => [
+                [
+                    'externalKey' => 'bug-blank',
+                    'name' => 'Renamed bug',
+                    'itemType' => 'bug',
+                    'priority' => 'high',
+                    'description' => 'Added repro after the first create.',
+                    'devTag' => '#backend',
+                    'dueAt' => '2026-10-19',
+                ],
+                [
+                    'externalKey' => 'task-blank',
+                    'name' => 'Renamed task',
+                    'itemType' => 'task',
+                    'priority' => 'high',
+                    'description' => 'Added task description after the first create.',
+                ],
+                [
+                    'externalKey' => 'bug-kept',
+                    'name' => 'Should not rename',
+                    'itemType' => 'bug',
+                    'priority' => 'low',
+                    'description' => 'This newer repro must not replace the original.',
+                    'devTag' => '#docs',
+                ],
+            ],
+        ], $this->tokenHeaders($integration))->assertOk();
+
+        $response->assertJsonPath('items.0.created', false)
+            ->assertJsonPath('items.1.created', false)
+            ->assertJsonPath('items.2.created', false);
+
+        $bug = Item::query()->where('external_key', 'bug-blank')->first();
+        $task = Item::query()->where('external_key', 'task-blank')->first();
+        $kept->refresh();
+        $this->assertNotNull($bug);
+        $this->assertNotNull($task);
+        $this->assertSame('Original bug title', $bug->name);
+        $this->assertSame('low', $bug->priority);
+        $this->assertStringContainsString('Added repro after the first create.', (string) $bug->repro_steps);
+        $this->assertSame('backend', $bug->dev_tag);
+        $this->assertSame('2026-10-19', $bug->due_at?->format('Y-m-d'));
+        $this->assertSame('Original task title', $task->name);
+        $this->assertStringContainsString('Added task description after the first create.', (string) $task->description);
+        $this->assertNull($task->repro_steps);
+        $this->assertSame('Bug with repro', $kept->name);
+        $this->assertSame('high', $kept->priority);
+        $this->assertStringContainsString('Keep these repro steps.', (string) $kept->repro_steps);
+        $this->assertStringNotContainsString('must not replace', (string) $kept->repro_steps);
+        $this->assertSame('backend', $kept->dev_tag);
     }
 
     public function test_existing_unassigned_ticket_is_assigned_when_email_is_sent_later(): void
