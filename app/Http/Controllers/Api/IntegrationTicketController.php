@@ -9,6 +9,23 @@ use Illuminate\Http\Request;
 
 class IntegrationTicketController extends Controller
 {
+    public function index(Request $request, IntegrationTicketService $tickets): JsonResponse
+    {
+        $validated = $request->validate([
+            'boardName' => 'required|string|max:255',
+        ]);
+
+        $resolved = $tickets->resolveBoard($validated['boardName']);
+        if ($resolved['status'] !== 200) {
+            return response()->json($resolved['payload'], $resolved['status']);
+        }
+
+        /** @var \App\Models\Board $board */
+        $board = $resolved['payload']['board'];
+
+        return response()->json($tickets->listOpenTickets($board));
+    }
+
     public function store(Request $request, IntegrationTicketService $tickets): JsonResponse
     {
         $validated = $request->validate([

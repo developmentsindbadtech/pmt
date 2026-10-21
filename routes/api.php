@@ -6,6 +6,8 @@ use App\Http\Middleware\EnsureBearerToken;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([EnsureBearerToken::class, 'auth:sanctum'])->group(function () {
+    Route::get('/integrations/tickets', [IntegrationTicketController::class, 'index'])
+        ->name('api.integrations.tickets.index');
     Route::post('/integrations/tickets', [IntegrationTicketController::class, 'store'])
         ->name('api.integrations.tickets');
     Route::get('/integrations/boards', [IntegrationAnalyticsController::class, 'boards'])

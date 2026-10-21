@@ -430,6 +430,186 @@ class IntegrationTicketsTest extends TestCase
             ->assertJsonStructure(['boards' => [['id', 'name']]]);
     }
 
+    public function test_lists_open_tickets_for_a_board_without_changing_them(): void
+    {
+        $integration = $this->integrationUser();
+        $owner = User::factory()->create();
+        $board = $this->boardWithGroup('CODE QC');
+        $done = Group::create(['board_id' => $board->id, 'name' => 'Done', 'position' => 1]);
+        $other = $this->boardWithGroup('Other Board');
+        $empty = $this->boardWithGroup('Empty QC');
+
+        $descriptionOnly = Item::create([
+            'board_id' => $board->id,
+            'number' => 4,
+            'name' => 'Manual note',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'description' => 'plain description',
+            'created_by' => $owner->id,
+        ]);
+        $withRepro = Item::create([
+            'board_id' => $board->id,
+            'number' => 2,
+            'name' => 'Sonar bug',
+            'item_type' => 'bug',
+            'priority' => 'high',
+            'description' => "  Sonar issue php:S1234  ",
+            'repro_steps' => "  See [rule](https://sonar.example/S1234)  ",
+            'external_key' => 'sonar:php:S1234',
+            'group_id' => $done->id,
+            'created_by' => $owner->id,
+        ]);
+        $reproOnly = Item::create([
+            'board_id' => $board->id,
+            'number' => 1,
+            'name' => 'Repro only',
+            'item_type' => 'bug',
+            'priority' => 'medium',
+            'description' => "  \n",
+            'repro_steps' => "  Open [title](https://example.com/issue)  ",
+            'created_by' => $owner->id,
+        ]);
+        $archived = Item::create([
+            'board_id' => $board->id,
+            'number' => 3,
+            'name' => 'Archived ticket',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'description' => 'should not appear',
+            'repro_steps' => 'archived repro',
+            'external_key' => 'archived-key',
+            'created_by' => $owner->id,
+            'archived_at' => now(),
+        ]);
+        $elsewhere = Item::create([
+            'board_id' => $other->id,
+            'number' => 1,
+            'name' => 'Other board ticket',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'description' => 'other board',
+            'external_key' => 'other-key',
+            'created_by' => $owner->id,
+        ]);
+
+        $before = Item::query()->orderBy('id')->get()->map(fn (Item $item) => [
+            'id' => $item->id,
+            'name' => $item->name,
+            'description' => $item->description,
+            'repro_steps' => $item->repro_steps,
+            'external_key' => $item->external_key,
+            'archived' => $item->archived_at !== null,
+        ])->all();
+
+        $response = $this->getJson(
+            '/api/integrations/tickets?boardName='.rawurlencode('code qc'),
+            $this->tokenHeaders($integration),
+        );
+
+        $response->assertOk()->assertExactJson([
+            'board' => [
+                'id' => $board->id,
+                'name' => 'CODE QC',
+            ],
+            'tickets' => [
+                [
+                    'id' => $reproOnly->id,
+                    'number' => 1,
+                    'name' => 'Repro only',
+                    'url' => url('/boards/'.$board->id.'/ticket/1'),
+                    'externalKey' => null,
+                    'description' => 'Open [title](https://example.com/issue)',
+                ],
+                [
+                    'id' => $withRepro->id,
+                    'number' => 2,
+                    'name' => 'Sonar bug',
+                    'url' => url('/boards/'.$board->id.'/ticket/2'),
+                    'externalKey' => 'sonar:php:S1234',
+                    'description' => "Sonar issue php:S1234\nSee [rule](https://sonar.example/S1234)",
+                ],
+                [
+                    'id' => $descriptionOnly->id,
+                    'number' => 4,
+                    'name' => 'Manual note',
+                    'url' => url('/boards/'.$board->id.'/ticket/4'),
+                    'externalKey' => null,
+                    'description' => 'plain description',
+                ],
+            ],
+        ]);
+
+        $after = Item::query()->orderBy('id')->get()->map(fn (Item $item) => [
+            'id' => $item->id,
+            'name' => $item->name,
+            'description' => $item->description,
+            'repro_steps' => $item->repro_steps,
+            'external_key' => $item->external_key,
+            'archived' => $item->archived_at !== null,
+        ])->all();
+        $this->assertSame($before, $after);
+        $this->assertNotNull($archived->fresh()->archived_at);
+        $this->assertNull($elsewhere->fresh()->archived_at);
+        $this->assertNull($withRepro->fresh()->archived_at);
+
+        $this->getJson(
+            '/api/integrations/tickets?boardName='.rawurlencode('empty qc'),
+            $this->tokenHeaders($integration),
+        )->assertOk()->assertExactJson([
+            'board' => [
+                'id' => $empty->id,
+                'name' => 'Empty QC',
+            ],
+            'tickets' => [],
+        ]);
+    }
+
+    public function test_list_requires_bearer_token_not_session_cookie(): void
+    {
+        $user = $this->integrationUser();
+        $this->boardWithGroup('CODE QC');
+
+        $this->actingAs($user)
+            ->getJson('/api/integrations/tickets?boardName='.rawurlencode('CODE QC'))
+            ->assertUnauthorized()
+            ->assertJsonFragment(['message' => 'Bearer token required. Session cookies are not accepted for this endpoint.']);
+    }
+
+    public function test_list_board_not_found_returns_404(): void
+    {
+        $integration = $this->integrationUser();
+
+        $this->getJson(
+            '/api/integrations/tickets?boardName='.rawurlencode('Does Not Exist'),
+            $this->tokenHeaders($integration),
+        )
+            ->assertNotFound()
+            ->assertJsonPath('message', 'Board not found.')
+            ->assertJsonPath('boardName', 'Does Not Exist');
+
+        $this->assertDatabaseCount('items', 0);
+    }
+
+    public function test_list_ambiguous_board_name_returns_409(): void
+    {
+        $integration = $this->integrationUser();
+        $this->boardWithGroup('Duplicate Name');
+        $this->boardWithGroup('duplicate name');
+        Board::query()->where('name', 'duplicate name')->update(['name' => 'Duplicate Name']);
+
+        $this->getJson(
+            '/api/integrations/tickets?boardName='.rawurlencode('Duplicate Name'),
+            $this->tokenHeaders($integration),
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Multiple boards match that name.')
+            ->assertJsonPath('boardName', 'Duplicate Name')
+            ->assertJsonStructure(['boards' => [['id', 'name']]]);
+
+        $this->assertDatabaseCount('items', 0);
+    }
+
     public function test_artisan_command_prints_token(): void
     {
         $this->artisan('pmt:integration-token')

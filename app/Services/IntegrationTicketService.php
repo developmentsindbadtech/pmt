@@ -58,6 +58,38 @@ class IntegrationTicketService
     }
 
     /**
+     * Open (non-archived) tickets on a board, for analyzers that must not duplicate work.
+     *
+     * @return array{board: array{id: int, name: string}, tickets: list<array<string, mixed>>}
+     */
+    public function listOpenTickets(Board $board): array
+    {
+        $items = Item::query()
+            ->where('board_id', $board->id)
+            ->active()
+            ->orderBy('number')
+            ->get(['id', 'number', 'name', 'description', 'repro_steps', 'external_key']);
+
+        return [
+            'board' => [
+                'id' => $board->id,
+                'name' => $board->name,
+            ],
+            'tickets' => $items->map(fn (Item $item) => [
+                'id' => $item->id,
+                'number' => $item->number,
+                'name' => $item->name,
+                'url' => url('/boards/'.$board->id.'/ticket/'.$item->number),
+                'externalKey' => $item->external_key,
+                'description' => trim(implode("\n", array_filter([
+                    trim((string) $item->description),
+                    trim((string) $item->repro_steps),
+                ], fn (string $line) => $line !== ''))),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $items
      * @return array{board: array{id: int, name: string}, items: list<array<string, mixed>>}
      */
