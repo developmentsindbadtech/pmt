@@ -170,11 +170,11 @@ new class extends Component
                             <label class="block text-sm font-medium text-gray-700">Description</label>
                             <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
                         </div>
-                        <div x-show="!editing" class="mt-1 min-h-[4rem] w-full rounded border border-transparent px-3 py-2 text-sm text-gray-900 whitespace-pre-wrap">
+                        <div x-show="!editing" class="mt-1 min-h-[4rem] w-full whitespace-pre-wrap break-words rounded border border-transparent px-3 py-2 text-sm text-gray-900">
                             @if($item->description)
-                                <div class="text-left w-full">{!! preg_replace('/@(\w+)/', '<span class="text-blue-600 font-medium">@$1</span>', e($item->description)) !!}</div>
+                                <div class="w-full text-left"><x-rich-text :text="$item->description" /></div>
                             @else
-                                <div class="text-left"><span class="text-gray-400 italic">No description</span></div>
+                                <div class="text-left"><span class="text-gray-400 italic">No description. Paste a link and it will be clickable.</span></div>
                             @endif
                         </div>
                         <textarea x-show="editing" x-cloak name="description" rows="4" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ old('description', $item->description) }}</textarea>
@@ -185,11 +185,11 @@ new class extends Component
                             <label class="block text-sm font-medium text-gray-700">Repro steps</label>
                             <button type="button" @click="editing = !editing" class="text-xs text-blue-600 hover:text-blue-700 hover:underline" x-text="editing ? 'Cancel' : 'Edit'"></button>
                         </div>
-                        <div x-show="!editing" class="mt-1 min-h-[4rem] w-full rounded border border-transparent px-3 py-2 text-sm text-gray-900 whitespace-pre-wrap">
+                        <div x-show="!editing" class="mt-1 min-h-[4rem] w-full whitespace-pre-wrap break-words rounded border border-transparent px-3 py-2 text-sm text-gray-900">
                             @if($item->repro_steps)
-                                <div class="text-left w-full">{!! preg_replace('/@(\w+)/', '<span class="text-blue-600 font-medium">@$1</span>', e($item->repro_steps)) !!}</div>
+                                <div class="w-full text-left"><x-rich-text :text="$item->repro_steps" /></div>
                             @else
-                                <div class="text-left"><span class="text-gray-400 italic">No repro steps</span></div>
+                                <div class="text-left"><span class="text-gray-400 italic">No repro steps. Paste a link and it will be clickable.</span></div>
                             @endif
                         </div>
                         <textarea x-show="editing" x-cloak name="repro_steps" rows="4" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ old('repro_steps', $item->repro_steps) }}</textarea>
@@ -218,7 +218,7 @@ new class extends Component
                                     </div>
                                 </div>
                                 <div class="flex-1 min-w-0">
-                                    <p class="text-sm text-gray-900">{{ $comment->body }}</p>
+                                    <p class="whitespace-pre-wrap break-words text-sm text-gray-900"><x-rich-text :text="$comment->body" /></p>
                                     <p class="mt-1 text-xs text-gray-500">{{ $commentUser->name }} · {{ $comment->created_at->diffForHumans() }}</p>
                                 </div>
                             </div>
@@ -228,7 +228,7 @@ new class extends Component
                 <form action="{{ route('items.comments.store', [$board, $item]) }}" method="POST" class="mt-4">
                     @csrf
                     <input type="hidden" name="view" value="{{ request('view', $board->view_type) }}" />
-                    <textarea name="body" rows="3" placeholder="Add a comment..." required class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"></textarea>
+                    <textarea name="body" rows="3" placeholder="Add a comment… paste a link or use @ to mention someone" required class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"></textarea>
                     @error('body') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
                     <button type="submit" class="mt-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Add comment</button>
                 </form>
@@ -310,7 +310,7 @@ new class extends Component
                             @endif
                         </p>
                         @if(isset($history['body']))
-                            <p class="mt-1 text-sm text-gray-700">{{ $history['body'] }}</p>
+                            <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-700"><x-rich-text :text="$history['body']" /></p>
                         @endif
                         <p class="mt-0.5 text-xs text-gray-500">{{ $history['timestamp']->format('M j, Y g:i A') }}</p>
                     </div>

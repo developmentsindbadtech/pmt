@@ -558,15 +558,25 @@ new class extends Component
                         </div>
                         @endif
                         @if($item->isTask())
-                        <div>
-                            <label class="{{ $label }}">Description</label>
-                            <textarea name="description" rows="5" data-mention-board-id="{{ $board->id }}" class="js-mention-textarea {{ $field }} min-h-[7rem] resize-y" placeholder="What needs to be done. Use @ to mention someone.">{{ old('description', $item->description) }}</textarea>
-                        </div>
+                            <x-clickable-text-field
+                                label="Description"
+                                name="description"
+                                :value="old('description', $item->description)"
+                                placeholder="What needs to be done. Paste a link or use @ to mention someone."
+                                :field-class="$field"
+                                :label-class="$label"
+                                :mention-board-id="$board->id"
+                            />
                         @else
-                        <div>
-                            <label class="{{ $label }}">Repro steps</label>
-                            <textarea name="repro_steps" rows="5" data-mention-board-id="{{ $board->id }}" class="js-mention-textarea {{ $field }} min-h-[7rem] resize-y" placeholder="How to reproduce. Use @ to mention someone.">{{ old('repro_steps', $item->repro_steps) }}</textarea>
-                        </div>
+                            <x-clickable-text-field
+                                label="Repro steps"
+                                name="repro_steps"
+                                :value="old('repro_steps', $item->repro_steps)"
+                                placeholder="How to reproduce. Paste a link or use @ to mention someone."
+                                :field-class="$field"
+                                :label-class="$label"
+                                :mention-board-id="$board->id"
+                            />
                         @endif
                         <button type="submit" class="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Save</button>
                     </form>
@@ -676,7 +686,7 @@ new class extends Component
                                                     </div>
                                                 </div>
                                                 <div class="flex-1 min-w-0">
-                                                    <p class="text-sm text-gray-800">{!! preg_replace('/@(\w+)/', '<span class="text-blue-600 font-medium">@$1</span>', e($comment->body)) !!}</p>
+                                                    <p class="whitespace-pre-wrap break-words text-sm text-gray-800"><x-rich-text :text="$comment->body" /></p>
                                                     <p class="mt-0.5 text-xs text-gray-400">{{ $commentUser->name }} · {{ $comment->created_at->format('M j, Y g:i A') }} <span class="text-gray-400">({{ $comment->created_at->diffForHumans() }})</span></p>
                                                 </div>
                                             </div>
@@ -694,7 +704,7 @@ new class extends Component
                         <form action="{{ route('items.comments.store', [$board, $item]) }}" method="POST" class="mt-3">
                             @csrf
                             <input type="hidden" name="view" value="{{ $view }}" />
-                            <textarea name="body" rows="2" data-mention-board-id="{{ $board->id }}" placeholder="Add a comment... (use @ to mention someone)" required class="js-mention-textarea w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-400 focus:ring-1 focus:ring-gray-400"></textarea>
+                            <textarea name="body" rows="2" data-mention-board-id="{{ $board->id }}" placeholder="Add a comment… paste a link or use @ to mention someone" required class="js-mention-textarea w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-400 focus:ring-1 focus:ring-gray-400"></textarea>
                             @error('body') <p class="mt-0.5 text-xs text-red-600">{{ $message }}</p> @enderror
                             <button type="submit" class="mt-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors">Add comment</button>
                         </form>
@@ -858,7 +868,7 @@ new class extends Component
                                     @endif
                                 </p>
                                 @if(isset($history['body']))
-                                    <p class="mt-0.5 text-xs text-gray-600">{!! preg_replace('/@(\w+)/', '<span class="text-blue-600 font-medium">@$1</span>', e(\Illuminate\Support\Str::limit($history['body'], 100))) !!}</p>
+                                    <p class="mt-0.5 break-words text-xs text-gray-600"><x-rich-text :text="\Illuminate\Support\Str::limit($history['body'], 100)" /></p>
                                 @endif
                                 <p class="mt-0.5 text-xs text-gray-400">{{ $history['timestamp']->format('M j, Y g:i A') }}</p>
                             </div>

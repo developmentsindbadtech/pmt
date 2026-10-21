@@ -1121,15 +1121,39 @@ new class extends Component
                         </div>
                     @endif
 
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Description</label>
-                        <p class="mt-0.5 text-xs text-gray-400">Context that doesn’t fit in the title — acceptance notes, links to intent, etc.</p>
+                    <div x-data="{ editing: @js(! filled($descriptionDraft)) }">
+                        <div class="flex items-center justify-between gap-2">
+                            <label class="block text-sm font-medium text-gray-700">Description</label>
+                            <button
+                                type="button"
+                                x-show="!editing"
+                                x-cloak
+                                @click="editing = true; $nextTick(() => $refs.desc.focus())"
+                                class="text-xs font-medium text-blue-600 hover:underline"
+                            >Edit</button>
+                        </div>
+                        <p class="mt-0.5 text-xs text-gray-400">Paste https://… or write [name](https://…). Click away and it becomes a link. Use @ to mention someone.</p>
+                        <div
+                            x-show="!editing"
+                            @if(! filled($descriptionDraft)) x-cloak @endif
+                            @click="if ($event.target.closest('a')) return; const sel = window.getSelection(); if (sel && sel.toString() !== '' && $el.contains(sel.anchorNode)) return; editing = true; $nextTick(() => $refs.desc.focus())"
+                            class="mt-2 min-h-[7.5rem] w-full cursor-text whitespace-pre-wrap break-words rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 hover:border-blue-300"
+                        >
+                            @if(filled($descriptionDraft))
+                                <x-rich-text :text="$descriptionDraft" />
+                            @else
+                                <span class="text-gray-400">Add more detail…</span>
+                            @endif
+                        </div>
                         <textarea
+                            x-ref="desc"
+                            x-show="editing"
+                            x-cloak
                             rows="5"
                             wire:model="descriptionDraft"
-                            wire:blur="persistDescription"
+                            @blur="$wire.persistDescription().then(() => { if ($refs.desc && $refs.desc.value.trim() !== '') editing = false }).catch(() => {})"
                             class="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            placeholder="Add more detail…"
+                            placeholder="Add more detail… paste a link or use @ to mention someone"
                         ></textarea>
                     </div>
 
@@ -1159,7 +1183,7 @@ new class extends Component
                                             </button>
                                         @endif
                                     </div>
-                                    <p class="mt-1.5 whitespace-pre-wrap text-sm text-gray-700">{!! preg_replace('/@(\w+)/', '<span class="font-medium text-blue-600">@$1</span>', e($comment->body)) !!}</p>
+                                    <p class="mt-1.5 whitespace-pre-wrap break-words text-sm text-gray-700"><x-rich-text :text="$comment->body" /></p>
                                 </div>
                             @empty
                                 <p class="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400">
@@ -1174,7 +1198,7 @@ new class extends Component
                                 rows="3"
                                 data-mention-sheet-id="{{ $sheetId }}"
                                 class="js-mention-textarea w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                placeholder="Write a comment… use @ to mention someone"
+                                placeholder="Write a comment… paste a link or use @ to mention someone"
                             ></textarea>
                             @error('commentBody')
                                 <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
