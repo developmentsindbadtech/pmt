@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\IntegrationAnalyticsController;
+use App\Http\Controllers\Api\IntegrationSheetController;
 use App\Http\Controllers\Api\IntegrationTicketController;
 use App\Http\Middleware\EnsureBearerToken;
 use Illuminate\Support\Facades\Route;
@@ -12,6 +13,10 @@ Route::middleware([EnsureBearerToken::class, 'auth:sanctum'])->group(function ()
         ->name('api.integrations.tickets');
     Route::get('/integrations/boards', [IntegrationAnalyticsController::class, 'boards'])
         ->name('api.integrations.boards');
+    Route::get('/integrations/sheets', [IntegrationSheetController::class, 'index'])
+        ->name('api.integrations.sheets.index');
+    Route::post('/integrations/sheets', [IntegrationSheetController::class, 'store'])
+        ->name('api.integrations.sheets');
     Route::get('/integrations/aging', [IntegrationAnalyticsController::class, 'aging'])
         ->name('api.integrations.aging');
     Route::get('/integrations/boards/{board}/analytics', [IntegrationAnalyticsController::class, 'show'])
