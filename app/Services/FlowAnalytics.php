@@ -1002,6 +1002,9 @@ class FlowAnalytics
                 self::enteredColumnAt($item, $activities->get($item->id, collect()), $column === 'No status' ? null : $column),
                 now(),
             );
+            if ($days < 7) {
+                continue;
+            }
             $byBoard[(int) $item->board_id][] = [
                 'number' => (int) $item->number,
                 'name' => $item->name,
@@ -1040,7 +1043,7 @@ class FlowAnalytics
     }
 
     /**
-     * People who still have an open ticket on a board the viewer can open.
+     * People who have an open ticket that has stayed in its column for 7 days or more.
      *
      * @param  array<int, int>  $boardIds
      * @return array<int, array{name: string, email: string}>
@@ -1070,9 +1073,7 @@ class FlowAnalytics
                 ->all();
         }
 
-        if (! in_array($viewer->id, $ids, true)) {
-            $ids[] = $viewer->id;
-        }
+        $ids = self::assigneesWaitingAtLeast($boardIds, $ids, 7);
 
         return User::query()
             ->whereIn('id', $ids === [] ? [0] : $ids)
@@ -1081,5 +1082,71 @@ class FlowAnalytics
             ->map(fn (User $user) => ['name' => $user->name, 'email' => $user->email])
             ->values()
             ->all();
+    }
+
+    /**
+     * Assignees with an open ticket that has stayed in its current column for at least $minDays.
+     *
+     * @param  array<int, int>  $boardIds
+     * @param  array<int, int>  $assigneeIds
+     * @return array<int, int>
+     */
+    private static function assigneesWaitingAtLeast(array $boardIds, array $assigneeIds, int $minDays): array
+    {
+        if ($boardIds === [] || $assigneeIds === []) {
+            return [];
+        }
+
+        $doneIds = Group::query()
+            ->whereIn('board_id', $boardIds)
+            ->get(['id', 'name'])
+            ->filter(fn (Group $group) => $group->isDone())
+            ->pluck('id')
+            ->all();
+
+        $items = Item::query()
+            ->whereIn('board_id', $boardIds)
+            ->whereIn('assignee_id', $assigneeIds)
+            ->whereNull('archived_at')
+            ->where('created_at', '<=', now()->subDays($minDays))
+            ->when($doneIds !== [], function ($query) use ($doneIds) {
+                $query->where(function ($inner) use ($doneIds): void {
+                    $inner->whereNull('group_id')->orWhereNotIn('group_id', $doneIds);
+                });
+            })
+            ->get(['id', 'assignee_id', 'group_id', 'created_at']);
+
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        $groups = Group::query()
+            ->whereIn('id', $items->pluck('group_id')->filter()->unique()->all() ?: [0])
+            ->get(['id', 'name'])
+            ->keyBy('id');
+        $activities = ItemActivity::query()
+            ->where('type', 'status_changed')
+            ->whereIn('item_id', $items->pluck('id'))
+            ->orderBy('created_at')
+            ->get(['item_id', 'new_value', 'created_at'])
+            ->groupBy('item_id');
+
+        $waiting = [];
+        foreach ($items as $item) {
+            if (! $item instanceof Item || $item->assignee_id === null) {
+                continue;
+            }
+            $group = $groups->get($item->group_id);
+            $column = $group instanceof Group ? $group->name : null;
+            $days = self::daysBetween(
+                self::enteredColumnAt($item, $activities->get($item->id, collect()), $column),
+                now(),
+            );
+            if ($days >= $minDays) {
+                $waiting[(int) $item->assignee_id] = (int) $item->assignee_id;
+            }
+        }
+
+        return array_values($waiting);
     }
 }

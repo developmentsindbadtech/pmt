@@ -207,16 +207,15 @@ class IntegrationAnalyticsTest extends TestCase
         $member
             ->assertJsonPath('person.name', 'Jeremy Daniel Estrada')
             ->assertJsonPath('projects.0.name', 'TI3.1_P4 NASDAQ DPM')
-            ->assertJsonPath('projects.0.more', 1)
+            ->assertJsonPath('projects.0.more', 0)
             ->assertJsonPath('projects.0.tickets.0.number', 1)
             ->assertJsonPath('projects.0.tickets.0.days', 30)
             ->assertJsonPath('projects.0.tickets.4.days', 10)
-            ->assertJsonPath('projects.1.name', 'TI3.1_P7 AI Monitoring')
-            ->assertJsonPath('projects.1.tickets.0.days', 3)
-            ->assertJsonPath('projects.1.tickets.0.column', 'Ready for QA')
+            ->assertJsonCount(1, 'projects')
             ->assertJsonMissing(['name' => 'Already closed'])
             ->assertJsonMissing(['name' => 'Hidden ticket'])
-            ->assertJsonMissing(['name' => 'Open 2']);
+            ->assertJsonMissing(['name' => 'Open 2'])
+            ->assertJsonMissing(['name' => 'Moved recently']);
 
         $this->getJson(
             '/api/integrations/aging?email=admin@sindbad.tech&assignee=jeremy@sindbad.tech',
