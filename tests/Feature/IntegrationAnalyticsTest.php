@@ -225,4 +225,160 @@ class IntegrationAnalyticsTest extends TestCase
             ->assertJsonPath('projects.0.name', 'Private Board')
             ->assertJsonPath('projects.0.tickets.0.name', 'Hidden ticket');
     }
+
+    public function test_ticket_review_keeps_stale_or_crucial_open_work(): void
+    {
+        $integration = $this->integrationUser();
+        $viewer = User::factory()->create(['email' => 'member@sindbad.tech', 'is_admin' => false, 'name' => 'Mina Member']);
+        $person = User::factory()->create(['email' => 'jeremy@sindbad.tech', 'is_admin' => false, 'name' => 'Jeremy Daniel Estrada']);
+        $admin = User::factory()->create(['email' => 'admin@sindbad.tech', 'is_admin' => true]);
+
+        $alpha = Board::create(['name' => 'TI3.1_P4 NASDAQ DPM', 'view_type' => 'kanban', 'created_by' => $admin->id]);
+        $hidden = Board::create(['name' => 'Private Board', 'view_type' => 'kanban', 'created_by' => $admin->id]);
+        $alpha->users()->attach($viewer->id);
+
+        $progress = Group::create(['board_id' => $alpha->id, 'name' => 'In Progress', 'position' => 0]);
+        $closed = Group::create(['board_id' => $alpha->id, 'name' => 'Closed', 'position' => 1]);
+        $hiddenProgress = Group::create(['board_id' => $hidden->id, 'name' => 'In Progress', 'position' => 0]);
+
+        $stale = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 11,
+            'name' => 'Quiet column sit',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'group_id' => $progress->id,
+            'assignee_id' => $person->id,
+            'created_by' => $viewer->id,
+        ]);
+        $stale->forceFill(['created_at' => now()->subDays(9), 'updated_at' => now()->subDays(9)])->save();
+
+        $high = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 12,
+            'name' => 'Rename the button',
+            'item_type' => 'task',
+            'priority' => 'high',
+            'group_id' => $progress->id,
+            'assignee_id' => $person->id,
+            'created_by' => $viewer->id,
+        ]);
+        $high->forceFill(['created_at' => now()->subDay(), 'updated_at' => now()->subDay()])->save();
+
+        $outage = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 13,
+            'name' => 'Checkout outage for live users',
+            'description' => 'Live checkout is down.',
+            'item_type' => 'bug',
+            'priority' => 'low',
+            'group_id' => $progress->id,
+            'assignee_id' => $person->id,
+            'created_by' => $viewer->id,
+        ]);
+        $outage->forceFill(['created_at' => now()->subDay(), 'updated_at' => now()->subDay()])->save();
+
+        $fresh = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 14,
+            'name' => 'Fresh rename',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'group_id' => $progress->id,
+            'created_by' => $viewer->id,
+        ]);
+        $fresh->forceFill(['created_at' => now()->subDays(2), 'updated_at' => now()->subDays(2)])->save();
+
+        $finished = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 15,
+            'name' => 'Old closed payment outage',
+            'item_type' => 'bug',
+            'priority' => 'high',
+            'group_id' => $closed->id,
+            'assignee_id' => $person->id,
+            'created_by' => $viewer->id,
+        ]);
+        $finished->forceFill(['created_at' => now()->subDays(30)])->save();
+
+        $overdue = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 16,
+            'name' => 'Past due export',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'group_id' => $progress->id,
+            'assignee_id' => $person->id,
+            'due_at' => now()->subDay()->toDateString(),
+            'created_by' => $viewer->id,
+        ]);
+        $overdue->forceFill(['created_at' => now()->subDays(2), 'updated_at' => now()->subDays(2)])->save();
+
+        $moved = Item::create([
+            'board_id' => $alpha->id,
+            'number' => 17,
+            'name' => 'Moved recently',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'group_id' => $progress->id,
+            'assignee_id' => $person->id,
+            'created_by' => $viewer->id,
+        ]);
+        $moved->forceFill(['created_at' => now()->subDays(40), 'updated_at' => now()->subDays(40)])->save();
+        $activity = ItemActivity::create([
+            'item_id' => $moved->id,
+            'user_id' => $viewer->id,
+            'type' => 'status_changed',
+            'field' => 'group',
+            'old_value' => 'New',
+            'new_value' => 'In Progress',
+        ]);
+        $activity->forceFill(['created_at' => now()->subDays(3)])->save();
+
+        $secret = Item::create([
+            'board_id' => $hidden->id,
+            'number' => 1,
+            'name' => 'Hidden ticket',
+            'item_type' => 'task',
+            'priority' => 'low',
+            'group_id' => $hiddenProgress->id,
+            'assignee_id' => $person->id,
+            'created_by' => $admin->id,
+        ]);
+        $secret->forceFill(['created_at' => now()->subDays(50)])->save();
+
+        $member = $this->getJson(
+            '/api/integrations/review?email=member@sindbad.tech',
+            $this->tokenHeaders($integration),
+        )->assertOk();
+
+        $member
+            ->assertJsonPath('summary.open', 6)
+            ->assertJsonPath('summary.stale', 1)
+            ->assertJsonPath('summary.high', 1)
+            ->assertJsonPath('summary.overdue', 1)
+            ->assertJsonPath('summary.unassigned', 1)
+            ->assertJsonPath('summary.columns.0.name', 'In Progress')
+            ->assertJsonPath('summary.columns.0.stale', 1)
+            ->assertJsonPath('candidates.0.number', 12)
+            ->assertJsonPath('candidates.1.number', 16)
+            ->assertJsonPath('candidates.2.number', 13)
+            ->assertJsonPath('candidates.2.description', 'Live checkout is down.')
+            ->assertJsonPath('candidates.3.number', 11)
+            ->assertJsonPath('candidates.3.days', 9)
+            ->assertJsonPath('candidates.3.column', 'In Progress')
+            ->assertJsonCount(4, 'candidates')
+            ->assertJsonFragment(['email' => 'jeremy@sindbad.tech'])
+            ->assertJsonMissing(['name' => 'Fresh rename'])
+            ->assertJsonMissing(['name' => 'Moved recently'])
+            ->assertJsonMissing(['name' => 'Old closed payment outage'])
+            ->assertJsonMissing(['name' => 'Hidden ticket']);
+
+        $this->getJson(
+            '/api/integrations/review?email=admin@sindbad.tech',
+            $this->tokenHeaders($integration),
+        )
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Hidden ticket']);
+    }
 }

@@ -19,6 +19,8 @@ Route::middleware([EnsureBearerToken::class, 'auth:sanctum'])->group(function ()
         ->name('api.integrations.sheets');
     Route::get('/integrations/aging', [IntegrationAnalyticsController::class, 'aging'])
         ->name('api.integrations.aging');
+    Route::get('/integrations/review', [IntegrationAnalyticsController::class, 'review'])
+        ->name('api.integrations.review');
     Route::get('/integrations/boards/{board}/analytics', [IntegrationAnalyticsController::class, 'show'])
         ->name('api.integrations.boards.analytics');
 });

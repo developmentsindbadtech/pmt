@@ -1149,4 +1149,380 @@ class FlowAnalytics
 
         return array_values($waiting);
     }
+
+    /**
+     * Open tickets on boards the viewer can see, for a delivery review.
+     * Closed columns are omitted. Candidates are work that has sat 7 days or more
+     * in its column, or work that is high-gravity even when it is newer.
+     *
+     * @return array{
+     *     people: array<int, array{name: string, email: string}>,
+     *     summary: array{
+     *         open: int,
+     *         stale: int,
+     *         high: int,
+     *         overdue: int,
+     *         unassigned: int,
+     *         columns: array<int, array{name: string, open: int, stale: int}>,
+     *         boards: array<int, array{name: string, open: int, stale: int}>
+     *     },
+     *     truncated: bool,
+     *     candidates: array<int, array<string, mixed>>
+     * }
+     */
+    public static function ticketReview(User $viewer): array
+    {
+        $boards = $viewer->isAdmin()
+            ? Board::query()->with('users:id,name,email')->orderBy('name')->get(['id', 'name'])
+            : $viewer->boards()->with('users:id,name,email')->orderBy('name')->get(['boards.id', 'boards.name']);
+
+        /** @var array<string, array{name: string, email: string}> $people */
+        $people = [];
+        self::rememberPerson($people, $viewer->name, $viewer->email);
+        foreach ($boards as $board) {
+            foreach ($board->users as $user) {
+                if ($user instanceof User) {
+                    self::rememberPerson($people, $user->name, $user->email);
+                }
+            }
+        }
+
+        $summary = [
+            'open' => 0,
+            'stale' => 0,
+            'high' => 0,
+            'overdue' => 0,
+            'unassigned' => 0,
+            'columns' => [],
+            'boards' => [],
+        ];
+        if ($boards->isEmpty()) {
+            return [
+                'people' => self::sortedPeople($people),
+                'summary' => $summary,
+                'truncated' => false,
+                'partial' => false,
+                'candidates' => [],
+            ];
+        }
+
+        $boardIds = $boards->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $boardNames = $boards->mapWithKeys(fn (Board $board) => [(int) $board->id => $board->name]);
+        $doneIds = Group::query()
+            ->whereIn('board_id', $boardIds)
+            ->get(['id', 'name'])
+            ->filter(fn (Group $group) => $group->isDone())
+            ->pluck('id')
+            ->all();
+
+        $items = Item::query()
+            ->whereIn('board_id', $boardIds)
+            ->whereNull('archived_at')
+            ->when($doneIds !== [], function ($query) use ($doneIds): void {
+                $query->where(function ($inner) use ($doneIds): void {
+                    $inner->whereNull('group_id')->orWhereNotIn('group_id', $doneIds);
+                });
+            })
+            ->get([
+                'id',
+                'board_id',
+                'number',
+                'name',
+                'description',
+                'item_type',
+                'priority',
+                'severity',
+                'group_id',
+                'assignee_id',
+                'due_at',
+                'created_at',
+            ]);
+
+        $groups = Group::query()
+            ->whereIn('id', $items->pluck('group_id')->filter()->unique()->all() ?: [0])
+            ->get(['id', 'name'])
+            ->keyBy('id');
+        $assignees = User::query()
+            ->whereIn('id', $items->pluck('assignee_id')->filter()->unique()->all() ?: [0])
+            ->get(['id', 'name', 'email'])
+            ->keyBy('id');
+        $activities = self::statusActivities($items->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        /** @var array<string, array{open: int, stale: int}> $columnStats */
+        $columnStats = [];
+        /** @var array<int, array{name: string, open: int, stale: int}> $boardStats */
+        $boardStats = [];
+        $candidates = [];
+
+        foreach ($items as $item) {
+            if (! $item instanceof Item) {
+                continue;
+            }
+            $group = $groups->get($item->group_id);
+            $column = $group instanceof Group ? $group->name : 'No status';
+            $days = self::daysBetween(
+                self::enteredColumnAt($item, $activities->get($item->id, collect()), $column === 'No status' ? null : $column),
+                now(),
+            );
+            $priority = self::reviewPriority($item->priority);
+            $severity = self::reviewSeverity($item->severity);
+            $overdue = self::isOverdue($item->due_at);
+            $stale = $days >= 7;
+            $ownerUser = $item->assignee_id ? $assignees->get($item->assignee_id) : null;
+            $owner = $ownerUser instanceof User ? $ownerUser->name : 'Unassigned';
+            $ownerEmail = $ownerUser instanceof User ? $ownerUser->email : null;
+            if ($ownerUser instanceof User) {
+                self::rememberPerson($people, $ownerUser->name, $ownerUser->email);
+            }
+
+            $summary['open']++;
+            if ($stale) {
+                $summary['stale']++;
+            }
+            if ($priority === 'high' || $priority === 'critical') {
+                $summary['high']++;
+            }
+            if ($overdue) {
+                $summary['overdue']++;
+            }
+            if (! $ownerUser instanceof User) {
+                $summary['unassigned']++;
+            }
+
+            $columnStats[$column]['open'] = ($columnStats[$column]['open'] ?? 0) + 1;
+            $columnStats[$column]['stale'] = ($columnStats[$column]['stale'] ?? 0) + ($stale ? 1 : 0);
+            $boardId = (int) $item->board_id;
+            $boardStats[$boardId]['name'] = (string) ($boardNames[$boardId] ?? 'Project');
+            $boardStats[$boardId]['open'] = ($boardStats[$boardId]['open'] ?? 0) + 1;
+            $boardStats[$boardId]['stale'] = ($boardStats[$boardId]['stale'] ?? 0) + ($stale ? 1 : 0);
+
+            $excerpt = self::plainExcerpt((string) $item->description);
+            $signals = self::reviewSignals($days, $priority, $severity, $overdue, $column, $item->name.' '.$excerpt);
+            if ($signals === []) {
+                continue;
+            }
+
+            $candidates[] = [
+                'score' => self::reviewScore($days, $priority, $severity, $overdue, $column, $signals, $ownerUser instanceof User),
+                'id' => $boardId.'-'.$item->number,
+                'boardId' => $boardId,
+                'boardName' => (string) ($boardNames[$boardId] ?? 'Project'),
+                'number' => (int) $item->number,
+                'name' => $item->name,
+                'url' => route('boards.show.item', ['board' => $boardId, 'item' => $item->number]),
+                'column' => $column,
+                'days' => $days,
+                'priority' => $priority,
+                'severity' => $severity,
+                'type' => $item->item_type === 'bug' ? 'bug' : 'task',
+                'owner' => $owner,
+                'ownerEmail' => $ownerEmail,
+                'due' => $item->due_at ? $item->due_at->toDateString() : null,
+                'overdue' => $overdue,
+                'stale' => $stale,
+                'description' => $excerpt,
+            ];
+        }
+
+        usort($candidates, function (array $left, array $right): int {
+            return $right['score'] <=> $left['score']
+                ?: $right['days'] <=> $left['days']
+                ?: $left['number'] <=> $right['number'];
+        });
+        $truncated = count($candidates) > 80;
+        $candidates = array_map(function (array $row): array {
+            unset($row['score']);
+
+            return $row;
+        }, array_slice($candidates, 0, 80));
+
+        $columns = [];
+        foreach ($columnStats as $name => $stat) {
+            $columns[] = ['name' => $name, 'open' => $stat['open'], 'stale' => $stat['stale']];
+        }
+        usort($columns, function (array $left, array $right): int {
+            return $right['stale'] <=> $left['stale']
+                ?: $right['open'] <=> $left['open']
+                ?: strcmp($left['name'], $right['name']);
+        });
+        $boardRows = array_values($boardStats);
+        usort($boardRows, function (array $left, array $right): int {
+            return $right['stale'] <=> $left['stale']
+                ?: $right['open'] <=> $left['open']
+                ?: strcmp($left['name'], $right['name']);
+        });
+
+        $summary['columns'] = $columns;
+        $summary['boards'] = $boardRows;
+
+        return [
+            'people' => self::sortedPeople($people),
+            'summary' => $summary,
+            'truncated' => $truncated,
+            'partial' => false,
+            'candidates' => $candidates,
+        ];
+    }
+
+    /**
+     * @param  array<int, int>  $itemIds
+     * @return Collection<int|string, Collection<int, ItemActivity>>
+     */
+    private static function statusActivities(array $itemIds): Collection
+    {
+        $grouped = collect();
+        foreach (array_chunk($itemIds, 500) as $chunk) {
+            if ($chunk === []) {
+                continue;
+            }
+            $rows = ItemActivity::query()
+                ->where('type', 'status_changed')
+                ->whereIn('item_id', $chunk)
+                ->orderBy('created_at')
+                ->get(['item_id', 'new_value', 'created_at'])
+                ->groupBy('item_id');
+            foreach ($rows as $itemId => $acts) {
+                $grouped->put($itemId, $acts);
+            }
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param  array<string, array{name: string, email: string}>  $people
+     */
+    private static function rememberPerson(array &$people, ?string $name, ?string $email): void
+    {
+        $mailbox = mb_strtolower(trim((string) $email));
+        $label = trim((string) $name);
+        if ($mailbox === '' || ! str_contains($mailbox, '@') || $label === '') {
+            return;
+        }
+        $people[$mailbox] = ['name' => $label, 'email' => trim((string) $email)];
+    }
+
+    /**
+     * @param  array<string, array{name: string, email: string}>  $people
+     * @return array<int, array{name: string, email: string}>
+     */
+    private static function sortedPeople(array $people): array
+    {
+        $rows = array_values($people);
+        usort($rows, fn (array $left, array $right): int => strcasecmp($left['name'], $right['name']));
+
+        return $rows;
+    }
+
+    private static function reviewPriority(mixed $value): string
+    {
+        $priority = mb_strtolower(trim((string) $value));
+
+        return in_array($priority, ['low', 'medium', 'high', 'critical'], true) ? $priority : 'medium';
+    }
+
+    private static function reviewSeverity(mixed $value): string
+    {
+        $severity = mb_strtolower(trim((string) $value));
+
+        return in_array($severity, ['minor', 'major', 'critical', 'blocker'], true) ? $severity : '';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function reviewSignals(
+        int $days,
+        string $priority,
+        string $severity,
+        bool $overdue,
+        string $column,
+        string $text,
+    ): array {
+        $signals = [];
+        if ($days >= 7) {
+            $signals[] = 'stale';
+        }
+        if ($priority === 'high' || $priority === 'critical') {
+            $signals[] = 'priority';
+        }
+        if ($severity === 'blocker' || $severity === 'critical') {
+            $signals[] = 'severity';
+        }
+        if ($overdue) {
+            $signals[] = 'overdue';
+        }
+        if (self::isConcern($column)) {
+            $signals[] = 'column';
+        }
+        if (self::isCrucialText($text)) {
+            $signals[] = 'crucial';
+        }
+
+        return $signals;
+    }
+
+    /**
+     * @param  array<int, string>  $signals
+     */
+    private static function reviewScore(
+        int $days,
+        string $priority,
+        string $severity,
+        bool $overdue,
+        string $column,
+        array $signals,
+        bool $assigned,
+    ): int {
+        $score = min($days, 60);
+        if ($priority === 'critical') {
+            $score += 48;
+        } elseif ($priority === 'high') {
+            $score += 36;
+        } elseif ($priority === 'medium') {
+            $score += 8;
+        }
+        if ($severity === 'blocker') {
+            $score += 28;
+        } elseif ($severity === 'critical') {
+            $score += 20;
+        }
+        if ($overdue) {
+            $score += 24;
+        }
+        if (self::isConcern($column)) {
+            $score += 18;
+        }
+        if (in_array('crucial', $signals, true)) {
+            $score += 22;
+        }
+        $holding = mb_strtolower($column);
+        if ($days >= 7 && (str_contains($holding, 'qa') || str_contains($holding, 'review') || str_contains($holding, 'ready'))) {
+            $score += 12;
+        }
+        if (! $assigned && $days >= 7) {
+            $score += 8;
+        }
+
+        return $score;
+    }
+
+    private static function isCrucialText(string $text): bool
+    {
+        return (bool) preg_match(
+            '/\b(?:outage|downtime|breach|regulatory|compliance|blocker|blocked|critical|urgent|incident|sev-?1|p0|p1)\b|data loss|production (?:down|issue|incident|outage|broken)|payment (?:fail|failed|failure|down|blocked|outage)|security (?:issue|bug|breach|hole|vulnerability)|cannot release|launch blocker/iu',
+            $text,
+        );
+    }
+
+    private static function plainExcerpt(string $value, int $max = 420): string
+    {
+        $text = trim(html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+        if (mb_strlen($text) <= $max) {
+            return $text;
+        }
+
+        return rtrim(mb_substr($text, 0, $max - 1)).'…';
+    }
 }

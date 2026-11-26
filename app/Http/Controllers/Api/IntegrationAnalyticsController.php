@@ -89,6 +89,11 @@ class IntegrationAnalyticsController extends Controller
         return response()->json(FlowAnalytics::assigneeAging($viewer, $assignee));
     }
 
+    public function review(Request $request): JsonResponse
+    {
+        return response()->json(FlowAnalytics::ticketReview($this->viewer($request)));
+    }
+
     private function viewer(Request $request): User
     {
         $email = mb_strtolower(trim((string) $request->query('email', '')));
